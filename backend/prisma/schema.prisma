@@ -1,0 +1,204 @@
+// Prisma schema for Elio HPP — self-hosted MySQL (aaPanel).
+// Mirrors the Supabase Postgres schema (project gwdtovpflrkkuvllexrv, table
+// `harga_acuan_material` excluded — that one stays in Cashier/Cashflow's own
+// database and is read cross-DB, see src/lib/hargaAcuanClient.ts).
+//
+// Decimal precision/scale below are best-effort defaults inferred from how
+// app.js formats/steps these fields (see comments per field) — NOT yet
+// confirmed against the live Supabase schema. Verify via
+// information_schema.columns before the first `prisma db push` against real
+// data; adjust here first if any column turns out narrower than what's
+// actually stored (a migration would silently truncate otherwise).
+//
+// No `@default(uuid())` on id fields, matching internal-performence-aapanel's
+// convention — migrateFromSupabase.ts reuses the original Supabase row ids
+// directly (preserves FK relationships across tables during copy), and new
+// rows created via the API generate their id with crypto.randomUUID() in the
+// route handler before insert.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model Produk {
+  id                   String    @id
+  nama                 String
+  jenis                String // selalu 'fnb' saat ini — kolom dipertahankan kalau nanti ada jenis lain (mis. 'jasa', terlihat di UI menuJasa meski belum ada datanya)
+  kategori             String? // teks kategori legacy (mis. "FNB"), dipertahankan di samping kategoriId — dipakai duplikatProduk sebagai fallback
+  kategoriId           String?   @map("kategori_id")
+  cabangHppId          String?   @map("cabang_hpp_id")
+  overheadPersen       Decimal   @default(15) @map("overhead_persen") @db.Decimal(6, 2)
+  targetMarginPersen   Decimal   @default(60) @map("target_margin_persen") @db.Decimal(6, 2)
+  hppTerakhir          Decimal   @default(0) @map("hpp_terakhir") @db.Decimal(14, 2)
+  hargaJualDisarankan  Decimal   @default(0) @map("harga_jual_disarankan") @db.Decimal(14, 2)
+  caraProses           String?   @map("cara_proses") @db.Text // JSON-stringified [{teks,level}] — disimpan apa adanya, di-parse di frontend
+  isDeleted            Boolean   @default(false) @map("is_deleted")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt             DateTime  @default(now()) @updatedAt @map("updated_at")
+
+  kategoriRef    KategoriProduk?          @relation(fields: [kategoriId], references: [id])
+  cabang         CabangHpp?               @relation(fields: [cabangHppId], references: [id])
+  resepBahan     ResepBahan[]
+  biayaOperasional BiayaOperasionalProduk[]
+  hppHistory     ProdukHppHistory[]
+  logs           ProdukLog[]
+
+  @@index([kategoriId])
+  @@index([cabangHppId])
+  @@index([isDeleted, jenis])
+  @@map("produk")
+}
+
+model ResepBahan {
+  id               String   @id
+  produkId         String   @map("produk_id")
+  bahanNamaNormal  String   @map("bahan_nama_normal") // TIDAK di-FK: bisa merujuk harga_acuan_material (DB lain), material_manual, atau kondimen
+  sumberBahan      String   @map("sumber_bahan") // 'acuan' | 'manual' | 'kondimen'
+  qtyPakai         Decimal  @default(0) @map("qty_pakai") @db.Decimal(12, 3)
+  hargaOverride    Decimal? @map("harga_override") @db.Decimal(14, 4)
+
+  produk Produk @relation(fields: [produkId], references: [id], onDelete: Cascade)
+
+  @@index([produkId])
+  @@index([bahanNamaNormal])
+  @@map("resep_bahan")
+}
+
+model BiayaOperasionalProduk {
+  id       String  @id
+  produkId String  @map("produk_id")
+  label    String
+  mode     String // 'manual' | 'persen'
+  value    Decimal @default(0) @db.Decimal(14, 2)
+
+  produk Produk @relation(fields: [produkId], references: [id], onDelete: Cascade)
+
+  @@index([produkId])
+  @@map("biaya_operasional_produk")
+}
+
+model ProdukHppHistory {
+  id           String   @id
+  produkId     String   @map("produk_id")
+  hpp          Decimal  @db.Decimal(14, 2)
+  hargaJual    Decimal  @map("harga_jual") @db.Decimal(14, 2)
+  marginPersen Decimal  @map("margin_persen") @db.Decimal(6, 2)
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  // Restrict, bukan Cascade: riwayat HPP adalah jejak audit, sebaiknya
+  // bertahan walau produk induknya suatu saat dihapus permanen (soft-delete
+  // via is_deleted adalah mekanisme hapus utama, hard-delete tidak dipakai UI).
+  produk Produk @relation(fields: [produkId], references: [id], onDelete: Restrict)
+
+  @@index([produkId, createdAt])
+  @@map("produk_hpp_history")
+}
+
+model ProdukLog {
+  id         String   @id
+  produkId   String   @map("produk_id")
+  produkNama String   @map("produk_nama") // denormalized — log tetap terbaca walau nama produk berubah/produk terhapus
+  aksi       String // 'buat' | 'edit' | 'hapus'
+  detail     String?  @db.Text
+  oleh       String // selalu "user HPP" saat ini (satu akun bersama, tidak ada identitas per-user)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  produk Produk @relation(fields: [produkId], references: [id], onDelete: Restrict)
+
+  @@index([produkId, createdAt])
+  @@index([createdAt])
+  @@map("produk_log")
+}
+
+model KategoriProduk {
+  id        String   @id
+  nama      String
+  parentId  String?  @map("parent_id")
+  level     Int
+  urutan    Int      @default(0)
+  isDeleted Boolean  @default(false) @map("is_deleted")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") // dipakai editKategori() di app.js lama
+
+  parent   KategoriProduk?  @relation("KategoriTree", fields: [parentId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  children KategoriProduk[] @relation("KategoriTree")
+  produk   Produk[]
+
+  @@index([parentId, urutan])
+  @@map("kategori_produk")
+}
+
+model CabangHpp {
+  id        String   @id
+  nama      String
+  aktif     Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") // dipakai edit-cabang di app.js lama
+
+  produk Produk[]
+
+  @@map("cabang_hpp")
+}
+
+model MaterialKonversi {
+  // nama_normal adalah kunci alami dipakai onConflict upsert di kode lama —
+  // dijadikan @id langsung (bukan surrogate id terpisah) supaya Prisma
+  // upsert({where:{namaNormal:...}}) bisa mereplikasi perilaku itu persis.
+  namaNormal     String  @id @map("nama_normal")
+  nama           String
+  isiPerKemasan  Decimal @map("isi_per_kemasan") @db.Decimal(12, 3)
+  satuanPakai    String  @map("satuan_pakai")
+
+  @@map("material_konversi")
+}
+
+model MaterialManual {
+  id             String  @id
+  nama           String
+  hargaPerSatuan Decimal @map("harga_per_satuan") @db.Decimal(14, 2)
+  satuan         String
+
+  @@map("material_manual")
+}
+
+model Kondimen {
+  id           String   @id
+  nama         String
+  satuanHasil  String   @map("satuan_hasil")
+  totalHasil   Decimal  @default(1) @map("total_hasil") @db.Decimal(12, 3)
+  hppTotal     Decimal  @default(0) @map("hpp_total") @db.Decimal(14, 2)
+  hppPerSatuan Decimal  @default(0) @map("hpp_per_satuan") @db.Decimal(14, 4)
+  catatan      String?  @db.Text
+  isDeleted    Boolean  @default(false) @map("is_deleted")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") // dipakai simpanKondimen() di app.js lama
+
+  bahan KondimenBahan[]
+
+  @@map("kondimen")
+}
+
+// Baris resep sebuah kondimen — kolom dikonfirmasi langsung dari
+// simpanKondimen() di app.js lama (bukan tebakan): beda dari resep_bahan,
+// kondimen_bahan menyimpan SNAPSHOT nama tampilan + konversi per baris
+// (bahanNama, isiKemasan, satuan), bukan cuma kunci nama_normal.
+model KondimenBahan {
+  id              String   @id
+  kondimenId      String   @map("kondimen_id")
+  bahanNamaNormal String   @map("bahan_nama_normal")
+  bahanNama       String   @map("bahan_nama")
+  sumberBahan     String   @map("sumber_bahan") // 'acuan' | 'manual'
+  qtyPakai        Decimal  @default(0) @map("qty_pakai") @db.Decimal(12, 3)
+  isiKemasan      Decimal? @map("isi_kemasan") @db.Decimal(12, 3)
+  satuan          String?
+  hargaOverride   Decimal? @map("harga_override") @db.Decimal(14, 4)
+
+  kondimen Kondimen @relation(fields: [kondimenId], references: [id], onDelete: Cascade)
+
+  @@index([kondimenId])
+  @@map("kondimen_bahan")
+}
