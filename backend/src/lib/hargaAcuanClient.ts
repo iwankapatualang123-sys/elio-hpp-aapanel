@@ -79,7 +79,21 @@ export async function getHargaAcuanMaterial(): Promise<{ rows: HargaAcuanRow[]; 
       harga_per_unit_beli: string | null;
       sumber: string | null;
       tanggal_terakhir: string | null;
-    }>('SELECT nama_kanonik, nama_asli, nama_normal, harga_per_unit_beli, sumber, tanggal_terakhir FROM harga_acuan_material');
+    }>(`
+      SELECT nama_kanonik, nama_asli, nama_normal, harga_per_unit_beli, sumber, tanggal_terakhir
+      FROM harga_acuan_material
+      WHERE COALESCE(nama_kanonik, nama_asli) !~* 'invoice|cetak'
+        AND length(COALESCE(nama_kanonik, nama_asli)) <= 80
+    `);
+    // Filter di atas nutupin akibatnya (3 baris sampah ditemukan 2026-07-26:
+    // tombol "cetak invoice" di modul warehouse Cashflow kelihatannya ikut
+    // nulis baris ke belanja_warehouse, bukan cuma mencetak — deskripsinya
+    // jadi teks tanggal/nomor invoice, bukan nama bahan). Ini BUKAN
+    // perbaikan akar masalahnya (itu ada di sisi aplikasi Cashflow, di luar
+    // cakupan HPP) — cuma jaga supaya sampah serupa di masa depan tidak ikut
+    // muncul di pencarian bahan HPP. Kalau Cashflow-nya sudah dibetulkan,
+    // filter ini tetap aman dibiarkan (tidak ada nama bahan asli yang
+    // sepanjang itu atau mengandung kata "invoice"/"cetak").
 
     const rows: HargaAcuanRow[] = result.rows.map((r) => ({
       namaKanonik: r.nama_kanonik,
