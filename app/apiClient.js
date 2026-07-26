@@ -176,6 +176,19 @@
     throw new Error(`material_konversi: operasi ${state.method} tidak didukung`);
   }
 
+  // Beda dari resep_bahan/biaya_operasional_produk: riwayat HPP cuma pernah
+  // dibaca bulk lewat .in("produk_id", ids) di app.js (hitungIndikatorProduk),
+  // tidak pernah per-satu-produk — dan tidak pernah di-delete/replace, cuma
+  // insert (append-only log).
+  async function handleProdukHppHistory(state) {
+    if (state.method === "select") {
+      const ids = inVal(state, "produk_id");
+      return apiFetch(`/api/produk-hpp-history?produkIds=${ids.map(encodeURIComponent).join(",")}`);
+    }
+    if (state.method === "insert") return apiFetch("/api/produk-hpp-history", { method: "POST", body: toBackendBody(state.body) });
+    throw new Error(`produk_hpp_history: operasi ${state.method} tidak didukung`);
+  }
+
   async function handleProdukLog(state) {
     if (state.method === "select") {
       const limit = state.limitN || 100;
@@ -206,7 +219,7 @@
     produk: crudTable("/api/produk", (body) => body && body.is_deleted === true),
     resep_bahan: childOfProdukTable("/api/resep-bahan"),
     biaya_operasional_produk: childOfProdukTable("/api/biaya-operasional-produk"),
-    produk_hpp_history: simpleTable("/api/produk-hpp-history"),
+    produk_hpp_history: { execute: handleProdukHppHistory },
     material_manual: simpleTable("/api/material-manual"),
     material_konversi: { execute: handleMaterialKonversi },
     harga_acuan_material: { execute: handleHargaAcuan },
