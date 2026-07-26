@@ -346,6 +346,108 @@ function allBahan(){
 }
 
 // ---------------------------------------------------------------------
+//  POPUP PILIH BAHAN — checkbox multi-pilih + filter, dipakai form Tambah
+//  Produk (lihat wiring #f-cari di renderAddView). bahanInfoHtml() juga
+//  dipakai editor Kondimen untuk baris hasil carinya sendiri (dropdown
+//  biasa di sana, bukan modal — cukup satu bahan sekali klik).
+// ---------------------------------------------------------------------
+const SRC_LABEL = { warehouse: "Gudang", harian: "Harian", manual: "Manual", kondimen: "Kondimen" };
+function bahanInfoHtml(b){
+  const hargaBeli = b.harga || 0;
+  const punyaKonv = !!b.konv;
+  const perUnit = punyaKonv ? hargaBeli / (b.konv.isi || 1) : null;
+  const infoHarga = punyaKonv
+    ? `<b>${perUnit.toFixed(2)}</b>/${esc(b.konv.unit)}` + (b.konv.isi > 1 ? ` <span class="si-beli">(${rp(hargaBeli)}/kemasan isi ${b.konv.isi} ${esc(b.konv.unit)})</span>` : ` <span class="si-beli">(${rp(hargaBeli)})</span>`)
+    : `${rp(hargaBeli)} <span class="si-warn">· satuan belum diatur</span>`;
+  const tgl = b.tanggal ? infoTanggal(b.tanggal) : null;
+  const tglHtml = tgl ? `<span class="${tgl.lama ? "si-usang" : "si-tgl"}">${tgl.lama ? "⚠ " : ""}${tgl.teks}</span>` : "";
+  return `<div class="si-top"><span class="si-nm">${esc(b.nama)}</span><span class="src">${esc(SRC_LABEL[b.sumber] || b.sumber)}</span></div>
+    <div class="si-info">${infoHarga}${tglHtml}</div>`;
+}
+
+let bahanModalSelected = new Set();
+let bahanModalQuery = "";
+
+function bukaBahanModal(){
+  let modal = $("#bahanModal");
+  if (!modal){
+    modal = document.createElement("div");
+    modal.id = "bahanModal";
+    modal.className = "dash-modal hidden";
+    modal.innerHTML = `<div class="dm-backdrop"></div>
+      <div class="dm-panel bm-panel">
+        <div class="dm-head"><h3>Pilih Bahan</h3><button class="icon-btn" id="bmClose" aria-label="Tutup"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
+        <div class="bm-search">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+          <input type="text" id="bmCari" placeholder="Cari bahan…" autocomplete="off">
+        </div>
+        <div class="bm-actions">
+          <button class="btn btn-sm" id="bmTambahManual">+ Bahan manual</button>
+          <button class="btn btn-sm" id="bmKelolaKondimen">★ Kelola Kondimen</button>
+        </div>
+        <div class="dm-body" id="bmList"></div>
+        <div class="bm-foot"><span id="bmCount">Belum ada dipilih</span><button class="btn btn-primary btn-sm" id="bmTambah" disabled>Tambahkan</button></div>
+      </div>`;
+    document.body.appendChild(modal);
+    modal.querySelector(".dm-backdrop").addEventListener("click", tutupBahanModal);
+    modal.querySelector("#bmClose").addEventListener("click", tutupBahanModal);
+    modal.querySelector("#bmCari").addEventListener("input", (e) => { bahanModalQuery = e.target.value; renderBahanModalList(); });
+    modal.querySelector("#bmTambahManual").addEventListener("click", () => { const q = bahanModalQuery.trim(); tutupBahanModal(); addManualBahanPrompt(q); });
+    modal.querySelector("#bmKelolaKondimen").addEventListener("click", () => { tutupBahanModal(); kelolaSub = "kondimen"; switchTab("kelola"); });
+    modal.querySelector("#bmTambah").addEventListener("click", konfirmasiBahanModal);
+  }
+  bahanModalSelected = new Set();
+  bahanModalQuery = "";
+  modal.querySelector("#bmCari").value = "";
+  renderBahanModalList();
+  modal.classList.remove("hidden");
+  requestAnimationFrame(() => modal.classList.add("show"));
+  setTimeout(() => modal.querySelector("#bmCari").focus(), 60);
+}
+function tutupBahanModal(){
+  const modal = $("#bahanModal");
+  if (!modal) return;
+  modal.classList.remove("show");
+  setTimeout(() => modal.classList.add("hidden"), 200);
+}
+function renderBahanModalList(){
+  const listEl = $("#bmList");
+  if (!listEl) return;
+  const sudahAda = new Set(formBahan.map(b => b.nama_normal));
+  const q = bahanModalQuery.trim().toLowerCase();
+  const list = allBahan().filter(b => !sudahAda.has(b.nama_normal) && (!q || b.nama.toLowerCase().includes(q)));
+  if (!list.length){
+    const cocokTapiSudahAda = allBahan().some(b => (!q || b.nama.toLowerCase().includes(q)) && sudahAda.has(b.nama_normal));
+    listEl.innerHTML = `<div class="empty" style="padding:24px;font-size:13px;">${cocokTapiSudahAda ? "Bahan yang cocok sudah semua ditambahkan." : "Tidak ada bahan cocok."}</div>`;
+  } else {
+    listEl.innerHTML = list.map(b => `<label class="bm-row ${bahanModalSelected.has(b.nama_normal) ? "checked" : ""}" data-nn="${esc(b.nama_normal)}">
+      <input type="checkbox" ${bahanModalSelected.has(b.nama_normal) ? "checked" : ""}>
+      <div class="bm-row-body">${bahanInfoHtml(b)}</div>
+    </label>`).join("");
+    $all(".bm-row", listEl).forEach(row => row.addEventListener("click", (e) => {
+      e.preventDefault();
+      const nn = row.dataset.nn;
+      if (bahanModalSelected.has(nn)) bahanModalSelected.delete(nn); else bahanModalSelected.add(nn);
+      row.classList.toggle("checked");
+      row.querySelector("input").checked = bahanModalSelected.has(nn);
+      updateBmFooter();
+    }));
+  }
+  updateBmFooter();
+}
+function updateBmFooter(){
+  const n = bahanModalSelected.size;
+  $("#bmCount").textContent = n ? `${n} bahan dipilih` : "Belum ada dipilih";
+  $("#bmTambah").disabled = !n;
+}
+function konfirmasiBahanModal(){
+  const n = bahanModalSelected.size;
+  bahanModalSelected.forEach(nn => addBahanByNormal(nn));
+  tutupBahanModal();
+  if (n) toast(n === 1 ? "1 bahan ditambahkan" : `${n} bahan ditambahkan`);
+}
+
+// ---------------------------------------------------------------------
 //  DAFTAR PRODUK
 // ---------------------------------------------------------------------
 function statusFromMargin(hpp, harga){
@@ -803,9 +905,8 @@ function renderAddView(){
       <div class="search-wrap">
         <div class="search-input">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
-          <input type="text" id="f-cari" placeholder="Ketik atau klik untuk pilih bahan" autocomplete="off">
+          <input type="text" id="f-cari" placeholder="Klik untuk pilih bahan…" autocomplete="off" readonly style="cursor:pointer;">
         </div>
-        <div class="search-results hidden" id="f-hasil"></div>
       </div>
       <div id="f-bahan"></div>
     </div>
@@ -857,42 +958,11 @@ function renderAddView(){
     </div>
   `;
 
-  // search behaviour
-  const cari = $("#f-cari"), hasil = $("#f-hasil");
-  const SRC_LABEL = { warehouse: "Gudang", harian: "Harian", manual: "Manual", kondimen: "Kondimen" };
-  function searchItemHtml(b){
-    const hargaBeli = b.harga || 0;
-    const punyaKonv = !!b.konv;
-    const perUnit = punyaKonv ? hargaBeli / (b.konv.isi || 1) : null;
-    const infoHarga = punyaKonv
-      ? `<b>${perUnit.toFixed(2)}</b>/${esc(b.konv.unit)}` + (b.konv.isi > 1 ? ` <span class="si-beli">(${rp(hargaBeli)}/kemasan isi ${b.konv.isi} ${esc(b.konv.unit)})</span>` : ` <span class="si-beli">(${rp(hargaBeli)})</span>`)
-      : `${rp(hargaBeli)} <span class="si-warn">· satuan belum diatur</span>`;
-    const tgl = b.tanggal ? infoTanggal(b.tanggal) : null;
-    const tglHtml = tgl ? `<span class="${tgl.lama ? "si-usang" : "si-tgl"}">${tgl.lama ? "⚠ " : ""}${tgl.teks}</span>` : "";
-    return `<div class="search-item" data-nn="${esc(b.nama_normal)}">
-      <div class="si-top"><span class="si-nm">${esc(b.nama)}</span><span class="src">${esc(SRC_LABEL[b.sumber] || b.sumber)}</span></div>
-      <div class="si-info">${infoHarga}${tglHtml}</div>
-    </div>`;
-  }
-  function showResults(q){
-    const list = allBahan();
-    const filtered = q ? list.filter(b => b.nama.toLowerCase().includes(q.toLowerCase())) : list;
-    const top = filtered.slice(0, 10);
-    let html = top.map(searchItemHtml).join("");
-    html += `<div class="search-item add-new" data-add="1"><span>+ Tidak ketemu? Tambah bahan manual</span></div>`;
-    html += `<div class="search-item add-new" data-kondimen="1"><span>★ Buat / kelola Material Kondimen</span></div>`;
-    hasil.innerHTML = html;
-    hasil.classList.remove("hidden");
-    $all(".search-item", hasil).forEach(it => it.addEventListener("click", () => {
-      if (it.dataset.add){ addManualBahanPrompt(cari.value.trim()); }
-      else if (it.dataset.kondimen){ kelolaSub = "kondimen"; switchTab("kelola"); return; }
-      else { addBahanByNormal(it.dataset.nn); }
-      cari.value = ""; hasil.classList.add("hidden");
-    }));
-  }
-  cari.addEventListener("focus", () => showResults(cari.value.trim()));
-  cari.addEventListener("input", () => showResults(cari.value.trim()));
-  document.addEventListener("click", (e) => { if (!hasil.contains(e.target) && e.target !== cari) hasil.classList.add("hidden"); });
+  // search behaviour — klik kotak "Bahan" membuka popup pilih-banyak (checkbox + filter),
+  // bukan dropdown inline lagi. Dipakai juga oleh pencarian bahan di editor Kondimen (lihat bahanInfoHtml).
+  const cari = $("#f-cari");
+  cari.addEventListener("focus", () => { cari.blur(); bukaBahanModal(); });
+  cari.addEventListener("click", () => bukaBahanModal());
 
   $("#f-oh").addEventListener("input", (e) => { formOverheadPersen = +e.target.value; $("#f-oh-val").textContent = formOverheadPersen + "%"; recalc(); autoDraft(); });
   $("#f-mg").addEventListener("input", (e) => { formMargin = +e.target.value; $("#f-mg-val").textContent = formMargin + "%"; recalc(); autoDraft(); });
@@ -1778,7 +1848,7 @@ function renderKondimenEditor(body){
   function show(q){
     const list = sumberBahan();
     const f = q ? list.filter(b => b.nama.toLowerCase().includes(q.toLowerCase())) : list;
-    hasil.innerHTML = f.slice(0, 10).map(b => `<div class="search-item" data-nn="${esc(b.nama_normal)}"><span>${esc(b.nama)}</span><span class="src">${esc(b.sumber)}</span></div>`).join("");
+    hasil.innerHTML = f.slice(0, 10).map(b => `<div class="search-item" data-nn="${esc(b.nama_normal)}">${bahanInfoHtml(b)}</div>`).join("");
     hasil.classList.remove("hidden");
     $all(".search-item", hasil).forEach(it => it.addEventListener("click", () => {
       const b = sumberBahan().find(x => x.nama_normal === it.dataset.nn);
