@@ -33,9 +33,11 @@
     "@types/jsonwebtoken": "^9.0.6",
     "@types/node": "^22.14.0",
     "@types/pg": "^8.11.10",
+    "@types/ws": "^8.18.1",
     "prisma": "^5.20.0",
     "tsx": "^4.21.0",
-    "typescript": "~5.8.2"
+    "typescript": "~5.8.2",
+    "ws": "^8.21.1"
   },
   "allowScripts": {
     "@prisma/client@5.22.0": true,
