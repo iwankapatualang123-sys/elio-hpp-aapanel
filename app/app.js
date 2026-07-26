@@ -859,11 +859,26 @@ function renderAddView(){
 
   // search behaviour
   const cari = $("#f-cari"), hasil = $("#f-hasil");
+  const SRC_LABEL = { warehouse: "Gudang", harian: "Harian", manual: "Manual", kondimen: "Kondimen" };
+  function searchItemHtml(b){
+    const hargaBeli = b.harga || 0;
+    const punyaKonv = !!b.konv;
+    const perUnit = punyaKonv ? hargaBeli / (b.konv.isi || 1) : null;
+    const infoHarga = punyaKonv
+      ? `<b>${perUnit.toFixed(2)}</b>/${esc(b.konv.unit)}` + (b.konv.isi > 1 ? ` <span class="si-beli">(${rp(hargaBeli)}/kemasan isi ${b.konv.isi} ${esc(b.konv.unit)})</span>` : ` <span class="si-beli">(${rp(hargaBeli)})</span>`)
+      : `${rp(hargaBeli)} <span class="si-warn">· satuan belum diatur</span>`;
+    const tgl = b.tanggal ? infoTanggal(b.tanggal) : null;
+    const tglHtml = tgl ? `<span class="${tgl.lama ? "si-usang" : "si-tgl"}">${tgl.lama ? "⚠ " : ""}${tgl.teks}</span>` : "";
+    return `<div class="search-item" data-nn="${esc(b.nama_normal)}">
+      <div class="si-top"><span class="si-nm">${esc(b.nama)}</span><span class="src">${esc(SRC_LABEL[b.sumber] || b.sumber)}</span></div>
+      <div class="si-info">${infoHarga}${tglHtml}</div>
+    </div>`;
+  }
   function showResults(q){
     const list = allBahan();
     const filtered = q ? list.filter(b => b.nama.toLowerCase().includes(q.toLowerCase())) : list;
     const top = filtered.slice(0, 10);
-    let html = top.map(b => `<div class="search-item" data-nn="${esc(b.nama_normal)}"><span>${esc(b.nama)}</span><span class="src">${esc(b.sumber)}</span></div>`).join("");
+    let html = top.map(searchItemHtml).join("");
     html += `<div class="search-item add-new" data-add="1"><span>+ Tidak ketemu? Tambah bahan manual</span></div>`;
     html += `<div class="search-item add-new" data-kondimen="1"><span>★ Buat / kelola Material Kondimen</span></div>`;
     hasil.innerHTML = html;
