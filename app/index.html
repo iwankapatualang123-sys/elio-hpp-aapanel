@@ -73,23 +73,47 @@
   .user-chip{ display:flex; align-items:center; gap:8px; font-size:13px; color:var(--ink-soft); background:var(--surface); border:1px solid var(--line); border-radius:999px; padding:6px 8px 6px 14px; box-shadow:var(--shadow-sm); }
   .user-chip .avatar{ width:28px; height:28px; border-radius:50%; background:var(--green); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:12px; }
 
-  /* LOGIN */
-  #loginScreen{ min-height:100dvh; display:flex; align-items:center; justify-content:center; padding:24px; }
-  .login-card{ background:var(--surface); border:1px solid var(--line); border-radius:14px; box-shadow:var(--shadow-lg); padding:36px 30px; width:100%; max-width:360px; text-align:center; }
-  .login-card .logo{ width:56px; height:56px; border-radius:11px; background:var(--green); display:flex; align-items:center; justify-content:center; margin:0 auto 18px; color:#fff; font-weight:800; font-size:22px; box-shadow:0 8px 18px -6px var(--green-ring); }
-  .login-card h1{ font-size:20px; font-weight:700; margin-bottom:4px; }
-  .login-card p{ font-size:13px; color:var(--ink-faint); margin-bottom:24px; }
-  .pin-dots{ display:flex; gap:12px; justify-content:center; margin-bottom:24px; }
-  .pin-dot{ width:14px; height:14px; border-radius:50%; border:2px solid var(--line-strong); transition:all .15s; }
-  .pin-dot.filled{ background:var(--green); border-color:var(--green); }
+  /* LOGIN — immersive: gradient+grid background (pola sama seperti .menu-hero/.dash-hero),
+     kartu glass-effect mengambang di atasnya, bukan kartu putih polos di atas halaman kosong. */
+  #loginScreen{
+    min-height:100dvh; display:flex; align-items:center; justify-content:center; padding:24px;
+    position:relative; overflow:hidden;
+    background:
+      radial-gradient(650px 520px at 12% 8%, rgba(125,243,174,0.32), transparent 62%),
+      radial-gradient(700px 560px at 92% 96%, rgba(125,243,174,0.20), transparent 65%),
+      linear-gradient(135deg,var(--green-dark) 0%,var(--green) 52%,#0A3D26 100%);
+  }
+  #loginScreen::before{
+    content:""; position:absolute; inset:0; pointer-events:none;
+    background-image:linear-gradient(rgba(255,255,255,0.05) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.05) 1px,transparent 1px);
+    background-size:42px 42px;
+    mask-image:radial-gradient(ellipse 90% 75% at 50% 0%,#000,transparent 78%);
+  }
+  .login-card{
+    position:relative; z-index:1;
+    background:color-mix(in srgb, var(--surface) 78%, transparent);
+    backdrop-filter:blur(22px); -webkit-backdrop-filter:blur(22px);
+    border:1px solid rgba(255,255,255,0.28);
+    border-radius:20px; box-shadow:0 30px 60px -22px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.05) inset;
+    padding:40px 32px; width:100%; max-width:380px; text-align:center;
+    animation:loginIn .5s cubic-bezier(.16,1,.3,1) both;
+  }
+  @keyframes loginIn{ from{ opacity:0; transform:translateY(22px) scale(.96); } to{ opacity:1; transform:none; } }
+  [data-theme="dark"] .login-card{ background:color-mix(in srgb, var(--surface) 62%, transparent); border-color:rgba(255,255,255,0.12); }
+  .login-card .logo{ width:60px; height:60px; border-radius:16px; background:linear-gradient(135deg,var(--green),var(--green-dark)); display:flex; align-items:center; justify-content:center; margin:0 auto 20px; color:#fff; font-weight:800; font-size:23px; box-shadow:0 10px 24px -8px var(--green-ring), 0 0 0 6px rgba(255,255,255,0.08); }
+  .login-card h1{ font-size:21px; font-weight:800; margin-bottom:4px; letter-spacing:-0.02em; }
+  .login-card p{ font-size:13px; color:var(--ink-faint); margin-bottom:26px; }
+  .pin-dots{ display:flex; gap:14px; justify-content:center; margin-bottom:26px; }
+  .pin-dot{ width:14px; height:14px; border-radius:50%; border:2px solid var(--line-strong); transition:all .18s; }
+  .pin-dot.filled{ background:var(--green); border-color:var(--green); box-shadow:0 0 0 4px var(--green-ring); }
   .pin-dot.error{ border-color:var(--red); background:var(--red); animation:shake .3s; }
   @keyframes shake{ 0%,100%{transform:translateX(0);} 25%{transform:translateX(-5px);} 75%{transform:translateX(5px);} }
   .keypad{ display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
-  .key{ aspect-ratio:1.4; border:1px solid var(--line); border-radius:8px; background:var(--surface); font-size:22px; font-weight:600; color:var(--ink); transition:all .12s; box-shadow:var(--shadow-sm); }
-  .key:hover{ background:var(--green-light); border-color:var(--green); }
-  .key:active{ transform:scale(.95); }
+  .key{ aspect-ratio:1.3; border:1px solid var(--line); border-radius:12px; background:var(--surface); font-size:22px; font-weight:700; color:var(--ink); transition:all .15s cubic-bezier(.2,.9,.3,1.3); box-shadow:var(--shadow-sm); }
+  .key:hover{ background:var(--green-light); border-color:var(--green); transform:translateY(-2px); box-shadow:var(--shadow-md); }
+  .key:active{ transform:scale(.94); }
   .key.wide{ font-size:14px; font-weight:600; color:var(--ink-soft); }
-  .login-err{ color:var(--red); font-size:13px; margin-top:16px; min-height:18px; }
+  .login-err{ color:var(--red); font-size:13px; margin-top:16px; min-height:18px; font-weight:600; }
 
   /* CARD */
   .card{ background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow-sm); padding:22px; margin-bottom:16px; }
