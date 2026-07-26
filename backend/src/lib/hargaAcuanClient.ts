@@ -5,21 +5,23 @@ import { env } from '../config/env';
 // datanya berasal dari pembelian di sisi Cashier/Cashflow (lihat
 // BACA-INI.md lama: "gabungan belanja gudang + belanja harian").
 //
-// FASE 1 (sekarang): connection string di HARGA_ACUAN_DATABASE_URL mengarah
-// ke project Supabase Elio Cashier asli (pooler/transaction-mode, role
-// read-only khusus tabel ini) — TIDAK menunggu migrasi Cashflow selesai.
-// FASE 2 (nanti, setelah Cashflow benar-benar live produksi): ganti nilai
-// HARGA_ACUAN_DATABASE_URL ke database elio_cashflow di server sendiri.
-// Karena target koneksi cuma dibaca dari satu env var di satu modul ini,
-// swap itu jadi ganti config, bukan redesign — jangan taruh logika koneksi
-// ini di tempat lain.
+// HARGA_ACUAN_DATABASE_URL mengarah ke database `elio_cashflow` (PostgreSQL)
+// di server aaPanel yang SAMA — koneksi lokal (127.0.0.1), bukan ke Supabase
+// sama sekali. Cashflow sudah live produksi sungguhan ~1 bulan (dikonfirmasi
+// user 2026-07-26), jadi elio_cashflow lebih update untuk data pembelian
+// dibanding Supabase lama. `harga_acuan_material` di sana adalah VIEW
+// (dikonfirmasi via psql, bukan tabel biasa) — query di bawah cuma perlu
+// SELECT dari view itu, agregasi belanja gudang+harian sudah dikerjakan
+// oleh definisi view-nya sendiri, tidak perlu dihitung ulang di sini.
+// Role Postgres yang dipakai HANYA di-GRANT SELECT ke view ini (bukan akses
+// skema penuh) — lihat instruksi GRANT di STATUS_MIGRASI.md.
 //
-// Kalau koneksi gagal (mis. project Supabase lama nonaktif, atau server
-// elio_cashflow sedang restart), endpoint yang memanggil getHargaAcuan()
-// HARUS tetap jalan dengan array kosong + flag `available:false` — bukan
-// melempar error yang menjatuhkan seluruh halaman produk. Baris resep
-// bersumber "acuan" ditandai "harga referensi tidak tersedia" di frontend,
-// bahan manual/kondimen tetap bisa diedit seperti biasa.
+// Kalau koneksi gagal (mis. Postgres server restart), endpoint yang
+// memanggil getHargaAcuanMaterial() HARUS tetap jalan dengan array kosong +
+// flag `available:false` — bukan melempar error yang menjatuhkan seluruh
+// halaman produk. Baris resep bersumber "acuan" ditandai "harga referensi
+// tidak tersedia" di frontend, bahan manual/kondimen tetap bisa diedit
+// seperti biasa.
 
 export interface HargaAcuanRow {
   namaKanonik: string | null;
@@ -40,11 +42,9 @@ function getPool(): Pool | null {
   if (!pool) {
     pool = new Pool({
       connectionString: env.hargaAcuanDatabaseUrl,
-      // Supabase pooler (dan kemungkinan besar elio_cashflow di Fase 2 juga)
-      // pakai sertifikat yang tidak selalu ada di trust store default Node —
-      // pola umum untuk koneksi pg ke Supabase, bukan kelonggaran khusus di
-      // sini.
-      ssl: { rejectUnauthorized: false },
+      // Koneksi lokal (127.0.0.1) ke Postgres di server yang sama — tidak
+      // pakai SSL, beda dari kalau ini masih nyambung ke Supabase.
+      ssl: false,
       max: 3,
       connectionTimeoutMillis: 5000,
       idleTimeoutMillis: 30_000
