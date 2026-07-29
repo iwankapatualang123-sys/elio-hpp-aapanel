@@ -259,31 +259,40 @@
   .tab svg{ width:16px; height:16px; }
   .tab.active{ background:var(--green); color:#fff; border-color:var(--green); }
 
-  /* Kartu kaca (glass) menyatukan header + tabs + hero jadi 1 unit --
-     pola sama seperti .login-card (color-mix + backdrop-filter). Header &
-     tabs "melayang" di atas panel kaca; hero (gradient hijau) bleed sampai
-     tepi supaya nyambung tanpa jahitan/gap, sudut bawahnya ikut membulat
-     lewat overflow:hidden di kartu ini (bukan border-radius hero sendiri). */
+  /* Kartu kaca (glass) HIJAU menyatukan hero + header + tabs jadi 1 unit --
+     urutan: hero (judul+stats) dulu paling atas, baru header (logo/user
+     chip/keluar), baru tabs paling bawah. Satu warna hijau translucent
+     (bukan putih) supaya semuanya terasa 1 permukaan, bukan blok terpisah.
+     Header & tabs dapat treatment "kaca di atas kaca" (pill putih tembus
+     pandang, pola sama seperti .cab-dd-btn) krn sekarang duduk di atas hijau. */
   .app-chrome{
     position:relative;
-    background:color-mix(in srgb, var(--surface) 72%, transparent);
+    background:color-mix(in srgb, var(--green-dark) 88%, transparent);
     backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px);
-    border:1px solid rgba(255,255,255,0.32);
-    border-radius:20px;
-    box-shadow:0 24px 48px -24px rgba(10,40,25,0.28), 0 0 0 1px rgba(255,255,255,0.05) inset;
+    border:1px solid rgba(255,255,255,0.14);
+    border-radius:18px;
+    box-shadow:0 20px 40px -22px rgba(10,40,25,0.35), 0 0 0 1px rgba(255,255,255,0.05) inset;
     overflow:hidden;
-    padding:20px 24px 0;
-    margin-bottom:20px;
+    padding:14px 20px 12px;
+    margin-bottom:16px;
   }
-  [data-theme="dark"] .app-chrome{ background:color-mix(in srgb, var(--surface) 55%, transparent); border-color:rgba(255,255,255,0.10); }
-  .app-chrome header{ margin-bottom:18px; }
-  .app-chrome .tabs{ margin-bottom:18px; }
-  .app-chrome .tab{ background:transparent; border-color:transparent; box-shadow:none; color:var(--ink-soft); }
-  .app-chrome .tab:hover{ background:rgba(255,255,255,0.35); }
-  [data-theme="dark"] .app-chrome .tab:hover{ background:rgba(255,255,255,0.08); }
-  .app-chrome .tab.active{ background:var(--green); color:#fff; box-shadow:var(--shadow-sm); }
-  .app-chrome .hero{ margin:0 -24px 0; border-radius:0; box-shadow:none; }
-  @media (max-width:640px){ .app-chrome{ padding:16px 16px 0; border-radius:16px; } .app-chrome .hero{ margin:0 -16px 0; } }
+  [data-theme="dark"] .app-chrome{ background:color-mix(in srgb, var(--green-dark) 78%, transparent); }
+  .app-chrome .hero{ background:transparent; box-shadow:none; padding:6px 2px 12px; margin:0; }
+  .app-chrome .hero-stats{ margin-top:10px; gap:18px; }
+  .app-chrome header{ margin:6px 0; padding-top:10px; border-top:1px solid rgba(255,255,255,0.14); }
+  .app-chrome .brand .name{ color:#fff; }
+  .app-chrome .brand .sub{ color:rgba(255,255,255,0.72); }
+  .app-chrome .brand .btn-ghost{ color:#fff; }
+  .app-chrome .user-chip{ background:rgba(255,255,255,0.14); border-color:rgba(255,255,255,0.24); color:#fff; backdrop-filter:blur(6px); }
+  .app-chrome .theme-toggle{ background:rgba(255,255,255,0.14); border-color:rgba(255,255,255,0.24); color:#fff; }
+  .app-chrome .theme-toggle:hover{ background:rgba(255,255,255,0.24); }
+  .app-chrome .btn-danger{ background:rgba(255,255,255,0.14); border-color:rgba(255,255,255,0.24); color:#fff; box-shadow:none; }
+  .app-chrome .btn-danger:hover{ background:rgba(255,255,255,0.24); }
+  .app-chrome .tabs{ margin:8px 0 0; }
+  .app-chrome .tab{ background:transparent; border-color:transparent; box-shadow:none; color:rgba(255,255,255,0.72); }
+  .app-chrome .tab:hover{ background:rgba(255,255,255,0.12); }
+  .app-chrome .tab.active{ background:rgba(255,255,255,0.18); color:#fff; box-shadow:none; }
+  @media (max-width:640px){ .app-chrome{ padding:12px 16px 10px; border-radius:16px; } }
 
   .empty{ text-align:center; padding:40px 20px; color:var(--ink-faint); font-size:14px; }
   .toast{ position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(20px); background:var(--ink); color:#fff; padding:12px 20px; border-radius:12px; font-size:14px; opacity:0; pointer-events:none; transition:all .3s; z-index:100; box-shadow:var(--shadow-lg); }
@@ -746,6 +755,8 @@
 <div id="appScreen" class="hidden">
   <div class="wrap wide">
     <div class="app-chrome">
+      <div id="prodHero"></div>
+
       <header>
         <div class="brand">
           <button class="btn btn-ghost btn-sm" id="backMenu" style="padding:6px;"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg></button>
@@ -771,8 +782,6 @@
         <div class="tab" data-tab="add" id="tabAdd"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>Tambah</div>
         <div class="tab" data-tab="kelola" id="tabKelola"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>Kelola</div>
       </div>
-
-      <div id="prodHero"></div>
     </div>
 
     <div id="fnbSection">
