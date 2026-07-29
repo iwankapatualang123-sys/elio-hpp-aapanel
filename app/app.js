@@ -655,6 +655,7 @@ function renderProdukList(){
       <input type="text" id="cariProduk" placeholder="Cari produk…" value="${esc(cariProduk)}">
       ${cariProduk ? '<button id="cariClear" aria-label="Hapus">&times;</button>' : ''}
     </div>
+    <button class="btn btn-sm" id="btnUpdateHarga"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg> Update Harga</button>
     <button class="btn btn-sm" id="btnExportPdf"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg> Ekspor PDF</button>
   </div>`;
 
@@ -823,6 +824,94 @@ function pasangToolbar(){
   if (clr) clr.addEventListener("click", () => { cariProduk = ""; renderProdukList(); });
   const exp = $("#btnExportPdf");
   if (exp) exp.addEventListener("click", exportPdf);
+  const upd = $("#btnUpdateHarga");
+  if (upd) upd.addEventListener("click", updateSemuaHarga);
+}
+
+// Hitung ulang HPP semua produk (dan kondimen yang jadi bahannya) pakai
+// harga acuan Cashflow terkini — tanpa harus buka+simpan tiap produk satu-satu.
+// Rumusnya sengaja ditulis ulang di sini (bukan manggil recalc()/hitungKondimenHpp()
+// yang baca state form global formBahan/kondimenEdit) supaya loop lintas-produk ini
+// tidak bentrok kalau user kebetulan lagi buka form Tambah/Edit di tab lain saat
+// tombol ini ditekan.
+async function updateSemuaHarga(){
+  const btn = $("#btnUpdateHarga");
+  const labelAsli = btn ? btn.innerHTML : "";
+  if (btn){ btn.disabled = true; btn.innerHTML = "Memperbarui…"; }
+
+  await loadHargaAcuan();
+  await loadKonversi();
+
+  // 1) Kondimen dulu — HPP produk yang pakai kondimen (★) bergantung ke nilai ini
+  let kondimenBerubah = 0, kondimenDilewati = 0;
+  for (const k of kondimenList){
+    const { data: bahanRows } = await sb.from("kondimen_bahan").select("*").eq("kondimen_id", k.id);
+    const bahan = (bahanRows || []).map(b => {
+      const found = allBahan().find(x => x.nama_normal === b.bahan_nama_normal);
+      return {
+        harga: found ? found.harga : 0,
+        konv: b.isi_kemasan ? { isi: Number(b.isi_kemasan), unit: b.satuan || "gr" } : (found && found.konv ? found.konv : null),
+        qty: Number(b.qty_pakai) || 0,
+        override: (b.harga_override !== null && b.harga_override !== undefined) ? Number(b.harga_override) : null,
+      };
+    });
+    if (!bahan.length || bahan.some(b => !b.konv)){ kondimenDilewati++; continue; }
+    let total = 0;
+    bahan.forEach(b => { total += (b.override != null ? b.override : b.harga / (b.konv.isi || 1)) * (b.qty || 0); });
+    const per = k.total_hasil > 0 ? total / k.total_hasil : 0;
+    const hppTotal = Math.round(total * 100) / 100, hppPer = Math.round(per * 100) / 100;
+    if (hppTotal !== k.hpp_total || hppPer !== k.hpp_per_satuan){
+      await sb.from("kondimen").update({ hpp_total: hppTotal, hpp_per_satuan: hppPer, updated_at: new Date().toISOString() }).eq("id", k.id);
+      k.hpp_total = hppTotal; k.hpp_per_satuan = hppPer;
+      kondimenBerubah++;
+    }
+  }
+
+  // 2) Produk — pakai kondimenList yang sudah direfresh di atas (lewat allBahan())
+  let produkBerubah = 0;
+  for (const p of produkList){
+    const { data: reseps } = await sb.from("resep_bahan").select("*").eq("produk_id", p.id);
+    if (!reseps || !reseps.length) continue; // belum diisi, tidak ada yang direfresh
+
+    let material = 0;
+    reseps.forEach(r => {
+      const found = allBahan().find(x => x.nama_normal === r.bahan_nama_normal);
+      const harga = found ? found.harga : 0;
+      const konv = found ? found.konv : null;
+      const override = (r.harga_override !== null && r.harga_override !== undefined) ? Number(r.harga_override) : null;
+      const eff = override != null ? override : (konv ? harga / (konv.isi || 1) : harga);
+      material += eff * (Number(r.qty_pakai) || 0);
+    });
+
+    const { data: opexs } = await sb.from("biaya_operasional_produk").select("*").eq("produk_id", p.id);
+    let opex = 0;
+    (opexs || []).forEach(o => { opex += o.mode === "persen" ? (Number(o.value) / 100) * material : Number(o.value); });
+
+    const overheadPersen = Number(p.overhead_persen) || 15;
+    const marginPersen = Number(p.target_margin_persen) || 60;
+    const overhead = (overheadPersen / 100) * (material + opex);
+    const final = material + opex + overhead;
+    const hargaJual = marginPersen < 100 ? final / (1 - marginPersen / 100) : final;
+
+    const hppBaru = Math.round(final), hargaBaru = Math.round(hargaJual);
+    const hppLama = Math.round(Number(p.hpp_terakhir) || 0);
+    if (hppBaru !== hppLama){
+      await sb.from("produk").update({ hpp_terakhir: hppBaru, harga_jual_disarankan: hargaBaru, updated_at: new Date().toISOString() }).eq("id", p.id);
+      await sb.from("produk_hpp_history").insert({ produk_id: p.id, hpp: hppBaru, harga_jual: hargaBaru, margin_persen: marginPersen });
+      await catatLog(p.id, p.nama, "update-harga", `HPP ${rp(hppLama)} → ${rp(hppBaru)}, harga jual ${rp(hargaBaru)}`);
+      produkBerubah++;
+    }
+  }
+
+  await loadKondimen();
+  await loadProduk(); // render ulang toolbar + kartu produk dgn angka baru
+
+  let ringkasan = produkBerubah ? `${produkBerubah} produk diperbarui harganya` : "Semua harga produk sudah paling baru";
+  if (kondimenBerubah) ringkasan += `, ${kondimenBerubah} kondimen ikut diperbarui`;
+  if (kondimenDilewati) ringkasan += `. ${kondimenDilewati} kondimen dilewati (satuan bahan belum lengkap)`;
+  toast(ringkasan);
+
+  if (btn && document.body.contains(btn)){ btn.disabled = false; btn.innerHTML = labelAsli; }
 }
 
 async function duplikatProduk(id){
