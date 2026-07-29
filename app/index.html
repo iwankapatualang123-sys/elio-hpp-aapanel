@@ -266,16 +266,23 @@
      sekarang pindah ke dalam #viewList. */
   .app-chrome{
     position:relative;
-    background:color-mix(in srgb, var(--green-dark) 60%, transparent);
-    backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px);
-    border:1px solid rgba(255,255,255,0.14);
+    /* Gradient hijau semi-transparan (bukan warna rata) -- warna rata 60% di
+       atas background halaman yg terang mencuci jadi "hijau muda pucat".
+       Gradient + alpha ~0.82 + saturate bikin tetap hijau pekat berisi tapi
+       masih kaca (konten yg scroll di bawahnya keblur tembus). */
+    background:linear-gradient(135deg,
+      color-mix(in srgb, var(--green-dark) 86%, transparent) 0%,
+      color-mix(in srgb, var(--green) 78%, transparent) 58%,
+      color-mix(in srgb, #12603C 86%, transparent) 100%);
+    backdrop-filter:blur(20px) saturate(1.4); -webkit-backdrop-filter:blur(20px) saturate(1.4);
+    border:1px solid rgba(255,255,255,0.16);
     border-radius:18px;
-    box-shadow:0 20px 40px -22px rgba(10,40,25,0.35), 0 0 0 1px rgba(255,255,255,0.05) inset;
+    box-shadow:0 20px 40px -22px rgba(10,40,25,0.4), 0 0 0 1px rgba(255,255,255,0.06) inset;
     overflow:hidden;
     padding:12px 20px;
     margin-bottom:16px;
   }
-  [data-theme="dark"] .app-chrome{ background:color-mix(in srgb, var(--green-dark) 45%, transparent); }
+  [data-theme="dark"] .app-chrome{ background:linear-gradient(135deg, color-mix(in srgb, var(--green-dark) 72%, transparent), color-mix(in srgb, #0A3D26 66%, transparent)); }
   .app-chrome header{ margin:0 0 10px; }
   .app-chrome .brand .name{ color:#fff; }
   .app-chrome .brand .sub{ color:rgba(255,255,255,0.72); }
