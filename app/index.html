@@ -51,7 +51,9 @@
   .hidden{ display:none !important; }
 
   .wrap{ max-width:760px; margin:0 auto; padding:28px 20px 72px; }
-  .wrap.wide{ max-width:1400px; padding:28px 32px 72px; }
+  /* Full-frame: tidak ada batas lebar -- isi penuh window (cuma sisa padding
+     tepi buat napas), jadi tidak ada ruang kosong kiri/kanan di layar lebar. */
+  .wrap.wide{ max-width:none; padding:22px 28px 40px; }
 
   header{ display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:28px; flex-wrap:wrap; }
   .brand{ display:flex; align-items:center; gap:12px; }

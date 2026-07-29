@@ -790,6 +790,9 @@ function renderProdukList(){
       const hppNum = Number(p.hpp_terakhir) || 0;
       const marginRekom = rekom > 0 ? Math.round((rekom - hppNum) / rekom * 100) : null;
       const marginAktual = hargaEfektif > 0 ? Math.round((hargaEfektif - hppNum) / hargaEfektif * 100) : null;
+      // Markup = berapa % harga jual DI ATAS HPP (basis modal), beda dari margin
+      // (basis harga). Cappucino jual 16.746 modal 6.698 -> markup 150%.
+      const markup = hppNum > 0 ? Math.round((hargaEfektif - hppNum) / hppNum * 100) : null;
       const updateTgl = infoTanggal(p.updated_at).teks;
       return `<tr class="prod-row ${belum ? "belum" : ""} ${edge}" data-id="${esc(p.id)}">
         <td><span class="pnm">${esc(p.nama)}</span>${usang}</td>
@@ -804,6 +807,7 @@ function renderProdukList(){
         <td class="r">${selisihHtml}</td>
         <td class="r"><span class="num-val">${marginRekom == null ? "—" : marginRekom + "%"}</span></td>
         <td class="r"><span class="num-val">${marginAktual == null ? "—" : marginAktual + "%"}</span></td>
+        <td class="r"><span class="num-val">${markup == null ? "—" : markup + "%"}</span></td>
         <td><div class="ct-tgl">${belum ? "—" : updateTgl}</div></td>
         <td class="r">
           <button class="prod-dup" data-dup="${esc(p.id)}" title="Duplikat produk"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button>
@@ -814,7 +818,7 @@ function renderProdukList(){
     return `<div class="prod-card">
       <div class="prod-card-head"><span>${esc(key)}</span><span class="cnt">${grup[key].length}</span></div>
       <div class="prod-table-wrap"><table class="prod-table">
-        <thead><tr><th>Produk</th><th>Status</th><th>Cabang &amp; tanggal</th><th class="r">HPP</th><th class="r">Harga rekomendasi</th><th class="r">Harga jual</th><th class="r">Selisih</th><th class="r">Margin rekom</th><th class="r">Margin aktual</th><th>Update terakhir</th><th></th></tr></thead>
+        <thead><tr><th>Produk</th><th>Status</th><th>Cabang &amp; tanggal</th><th class="r">HPP</th><th class="r">Harga rekomendasi</th><th class="r">Harga jual</th><th class="r">Selisih</th><th class="r">Margin rekom</th><th class="r">Margin aktual</th><th class="r" title="Harga jual di atas HPP (basis modal)">Markup</th><th>Update terakhir</th><th></th></tr></thead>
         <tbody>${rows}</tbody>
       </table></div>
     </div>`;
