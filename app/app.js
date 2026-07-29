@@ -311,8 +311,6 @@ async function hitungIndikatorProduk(){
       p._tren = now > prev ? "naik" : now < prev ? "turun" : "sama";
       p._trenPersen = prev ? Math.round((now - prev) / prev * 100) : 0;
     } else p._tren = null;
-    // titik sparkline (urut lama→baru, maks 12 titik)
-    p._spark = h.slice(0, 12).map(x => Number(x.hpp)).reverse();
     // bahan usang
     const rs = resepPer[p.id] || [];
     let adaUsang = false;
@@ -325,15 +323,6 @@ async function hitungIndikatorProduk(){
   });
 }
 
-function sparklineSvg(points, warna){
-  if (!points || points.length < 2) return "";
-  const w = 54, h = 18, pad = 2;
-  const min = Math.min(...points), max = Math.max(...points);
-  const range = max - min || 1;
-  const step = (w - pad*2) / (points.length - 1);
-  const pts = points.map((v, i) => `${(pad + i*step).toFixed(1)},${(h - pad - ((v - min)/range)*(h - pad*2)).toFixed(1)}`).join(" ");
-  return `<svg class="spark" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><polyline points="${pts}" fill="none" stroke="${warna}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
-}
 async function catatLog(produkId, produkNama, aksi, detail){
   await sb.from("produk_log").insert({ produk_id: produkId, produk_nama: produkNama, aksi, detail: detail || "", oleh: "user HPP" });
 }
@@ -716,7 +705,7 @@ function renderProdukList(){
     (grup[key] = grup[key] || []).push(p);
   });
   el.innerHTML = Object.keys(grup).sort().map(key => {
-    const items = grup[key].map(p => {
+    const rows = grup[key].map(p => {
       const cab = cabangList.find(c => c.id === p.cabang_hpp_id);
       const belum = produkBelumDiisi(p);
       const st = statusFromMargin(Number(p.hpp_terakhir), Number(p.harga_jual_disarankan));
@@ -732,32 +721,33 @@ function renderProdukList(){
       const statusHtml = belum
         ? `<span class="status-pill status-belum"><svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h16.9a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>Belum diisi</span>`
         : (st ? `<span class="status-pill ${st.cls}">${st.txt}</span>` : "");
-      return `<div class="prod-item ${belum ? "belum" : ""} ${edge}" data-id="${esc(p.id)}">
-        <div class="top">
-          <span class="pnm">${esc(p.nama)}</span>
-          ${usang}
-        </div>
-        <div class="col-status">${statusHtml}</div>
-        <div class="col-tgl">
-          ${cab ? `<span class="ct-cab">${esc(cab.nama)}</span>` : ""}
-          <span class="ct-tgl">${tgl}</span>
-        </div>
-        <div class="nums">
-          <div><div class="num-lbl">HPP</div><div class="num-val">${belum ? "—" : rp(p.hpp_terakhir)}${tren}${(!belum && p._spark && p._spark.length >= 2) ? sparklineSvg(p._spark, p._tren === "naik" ? "var(--red)" : "#1E7D46") : ""}</div></div>
-          <div><div class="num-lbl">Harga jual</div><div class="num-val hl">${belum ? "—" : rp(p.harga_jual_aktual ?? p.harga_jual_disarankan)}</div>${(!belum && p.harga_jual_aktual !== null && p.harga_jual_aktual !== undefined) ? `<div class="num-lbl" style="margin-top:2px;text-transform:none;letter-spacing:0;">saran ${rp(p.harga_jual_disarankan)}</div>` : ""}</div>
-          <div><div class="num-lbl">Margin</div><div class="num-val">${p.target_margin_persen}%</div></div>
-          <button class="prod-dup" data-dup="${esc(p.id)}" title="Duplikat produk"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button>
-        </div>
-      </div>`;
+      return `<tr class="prod-row ${belum ? "belum" : ""} ${edge}" data-id="${esc(p.id)}">
+        <td><span class="pnm">${esc(p.nama)}</span>${usang}</td>
+        <td>${statusHtml}</td>
+        <td>
+          ${cab ? `<div class="ct-cab">${esc(cab.nama)}</div>` : ""}
+          <div class="ct-tgl">${tgl}</div>
+        </td>
+        <td class="r"><span class="num-val">${belum ? "—" : rp(p.hpp_terakhir)}</span>${tren}</td>
+        <td class="r">
+          <span class="num-val hl">${belum ? "—" : rp(p.harga_jual_aktual ?? p.harga_jual_disarankan)}</span>
+          ${(!belum && p.harga_jual_aktual !== null && p.harga_jual_aktual !== undefined) ? `<div class="sub-note">saran ${rp(p.harga_jual_disarankan)}</div>` : ""}
+        </td>
+        <td class="r"><span class="num-val">${p.target_margin_persen}%</span></td>
+        <td class="r"><button class="prod-dup" data-dup="${esc(p.id)}" title="Duplikat produk"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button></td>
+      </tr>`;
     }).join("");
     return `<div style="margin-bottom:6px;">
       <div class="grup-head"><span>${esc(key)}</span><span class="cnt">${grup[key].length}</span><span class="garis"></span></div>
-      ${items}
+      <div class="prod-table-wrap"><table class="prod-table">
+        <thead><tr><th>Produk</th><th>Status</th><th>Cabang &amp; tanggal</th><th class="r">HPP</th><th class="r">Harga jual</th><th class="r">Margin</th><th></th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>
     </div>`;
   }).join("");
   el.innerHTML = toolbar + dash + el.innerHTML;
   pasangToolbar();
-  $all(".prod-item", el).forEach(it => it.addEventListener("click", (e) => {
+  $all(".prod-row", el).forEach(it => it.addEventListener("click", (e) => {
     if (e.target.closest(".prod-dup")) return;
     openEdit(it.dataset.id);
   }));

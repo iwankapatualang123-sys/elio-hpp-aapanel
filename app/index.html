@@ -398,6 +398,26 @@
   .grup-head .garis{ flex:1; height:1px; background:var(--line); }
   .grup-head .cnt{ background:var(--green-light); color:var(--green-dark); font-size:11px; font-weight:700; padding:1px 8px; border-radius:5px; }
 
+  /* TABEL PRODUK per kategori */
+  .prod-table-wrap{ overflow-x:auto; border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow-sm); margin-bottom:6px; }
+  .prod-table{ width:100%; border-collapse:collapse; background:var(--surface); font-size:13px; }
+  .prod-table th{ text-align:left; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.03em; color:var(--ink-faint); padding:10px 14px; border-bottom:1px solid var(--line); background:var(--panel); white-space:nowrap; }
+  .prod-table th.r, .prod-table td.r{ text-align:right; }
+  .prod-table td{ padding:11px 14px; border-bottom:1px solid var(--line); vertical-align:middle; white-space:nowrap; }
+  .prod-table tbody tr:last-child td{ border-bottom:0; }
+  .prod-table tbody tr{ cursor:pointer; transition:background .12s; }
+  .prod-table tbody tr:hover{ background:var(--panel); }
+  .prod-table tbody tr.edge-sehat td:first-child{ box-shadow:inset 3px 0 0 #1E7D46; }
+  .prod-table tbody tr.edge-tipis td:first-child{ box-shadow:inset 3px 0 0 var(--amber); }
+  .prod-table tbody tr.edge-rugi td:first-child{ box-shadow:inset 3px 0 0 var(--red); }
+  .prod-table tbody tr.belum td:first-child{ box-shadow:inset 3px 0 0 var(--amber); }
+  .prod-table .pnm{ font-weight:700; color:var(--ink); white-space:normal; }
+  .prod-table .num-val{ font-weight:700; }
+  .prod-table .num-val.hl{ color:var(--green-dark); }
+  .prod-table .sub-note{ font-size:11px; color:var(--ink-faint); font-weight:500; margin-top:2px; }
+  .prod-table .ct-cab{ font-size:12px; font-weight:600; color:var(--ink-soft); }
+  .prod-table .ct-tgl{ font-size:11px; color:var(--ink-faint); margin-top:1px; }
+
   /* LAYOUT 2 KOLOM */
   .app-layout{ display:grid; grid-template-columns:260px 1fr; gap:22px; align-items:start; }
   .app-sidebar{ position:sticky; top:16px; background:var(--surface); border:1px solid var(--line); border-radius:16px; padding:12px; box-shadow:var(--shadow-sm); }
@@ -460,9 +480,6 @@
   .insight .is{ font-size:11px; color:var(--ink-faint); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .insight.good .iv{ color:#1E7D46; }
   .insight.bad .iv{ color:var(--red); }
-
-  /* SPARKLINE */
-  .spark{ display:inline-block; vertical-align:middle; margin-left:8px; }
 
   /* DARK TOGGLE */
   .theme-toggle{ width:38px; height:38px; border-radius:9px; border:1px solid var(--line-strong); background:var(--surface); color:var(--ink-soft); display:inline-flex; align-items:center; justify-content:center; cursor:pointer; box-shadow:var(--shadow-sm); }
