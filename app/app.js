@@ -392,7 +392,7 @@ function bukaBahanModal(){
     modal.querySelector(".dm-backdrop").addEventListener("click", tutupBahanModal);
     modal.querySelector("#bmClose").addEventListener("click", tutupBahanModal);
     modal.querySelector("#bmCari").addEventListener("input", (e) => { bahanModalQuery = e.target.value; renderBahanModalList(); });
-    modal.querySelector("#bmTambahManual").addEventListener("click", () => { const q = bahanModalQuery.trim(); tutupBahanModal(); addManualBahanPrompt(q); });
+    modal.querySelector("#bmTambahManual").addEventListener("click", () => { const q = bahanModalQuery.trim(); tutupBahanModal(); bukaBahanManualModal(q); });
     modal.querySelector("#bmKelolaKondimen").addEventListener("click", () => { tutupBahanModal(); kelolaSub = "kondimen"; switchTab("kelola"); });
     modal.querySelector("#bmTambah").addEventListener("click", konfirmasiBahanModal);
   }
@@ -1071,16 +1071,58 @@ function addBahanByNormal(nn){
   renderFormBahan(); recalc();
 }
 
-async function addManualBahanPrompt(prefill){
-  const nama = prompt("Nama bahan baru:", prefill || ""); if (!nama) return;
-  const harga = parseFloat(prompt("Harga per satuan (Rp):", "0")); if (isNaN(harga)) return;
-  const satuan = (prompt("Satuan (gr / ml / pcs):", "gr") || "gr").trim();
+// Dulu 3x prompt() berantai — kalau salah satu dialog native ke-dismiss atau
+// tidak muncul (ketemu langsung waktu QA: browser tertentu mensupresi
+// prompt()/confirm()), fungsinya diam-diam berhenti tanpa pesan apa pun,
+// kelihatan seperti "tombolnya tidak berfungsi". Diganti form biasa di modal.
+function bukaBahanManualModal(prefill){
+  let modal = $("#bahanManualModal");
+  if (!modal){
+    modal = document.createElement("div");
+    modal.id = "bahanManualModal";
+    modal.className = "dash-modal hidden";
+    modal.innerHTML = `<div class="dm-backdrop"></div>
+      <div class="dm-panel" style="max-width:400px;">
+        <div class="dm-head"><h3>Tambah Bahan Manual</h3><button class="icon-btn" id="bmmClose" aria-label="Tutup"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
+        <div class="dm-body">
+          <div class="field"><label>Nama bahan</label><input type="text" id="bmm-nama" placeholder="mis. Micin 500gram"></div>
+          <div class="field"><label>Harga per satuan (Rp)</label><input type="number" id="bmm-harga" min="0" step="1" placeholder="0"></div>
+          <div class="field"><label>Satuan</label><select id="bmm-satuan"><option value="gr">gr</option><option value="ml">ml</option><option value="pcs">pcs</option></select></div>
+        </div>
+        <div class="bm-foot"><span></span><button class="btn btn-primary btn-sm" id="bmmSimpan">Simpan</button></div>
+      </div>`;
+    document.body.appendChild(modal);
+    modal.querySelector(".dm-backdrop").addEventListener("click", tutupBahanManualModal);
+    modal.querySelector("#bmmClose").addEventListener("click", tutupBahanManualModal);
+    modal.querySelector("#bmmSimpan").addEventListener("click", simpanBahanManual);
+    modal.querySelector("#bmm-nama").addEventListener("keydown", (e) => { if (e.key === "Enter") simpanBahanManual(); });
+  }
+  modal.querySelector("#bmm-nama").value = prefill || "";
+  modal.querySelector("#bmm-harga").value = "";
+  modal.querySelector("#bmm-satuan").value = "gr";
+  modal.classList.remove("hidden");
+  requestAnimationFrame(() => modal.classList.add("show"));
+  setTimeout(() => modal.querySelector("#bmm-nama").focus(), 60);
+}
+function tutupBahanManualModal(){
+  const modal = $("#bahanManualModal");
+  if (!modal) return;
+  modal.classList.remove("show");
+  setTimeout(() => modal.classList.add("hidden"), 200);
+}
+async function simpanBahanManual(){
+  const nama = $("#bmm-nama").value.trim();
+  const harga = parseFloat($("#bmm-harga").value);
+  const satuan = $("#bmm-satuan").value;
+  if (!nama){ toast("Nama bahan wajib diisi"); return; }
+  if (isNaN(harga) || harga < 0){ toast("Harga tidak valid"); return; }
   const { error } = await sb.from("material_manual").insert({ nama, harga_per_satuan: harga, satuan });
   if (error){ toast("Gagal simpan bahan manual"); return; }
   await loadManual();
   const nn = nama.toLowerCase().trim();
   formBahan.push({ nama, nama_normal: nn, harga, sumber: "manual", konv: { isi: 1, unit: satuan }, qty: 0, override: null, hargaBeliOverride: null });
   renderFormBahan(); recalc();
+  tutupBahanManualModal();
   toast("Bahan manual ditambahkan");
 }
 
