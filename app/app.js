@@ -729,6 +729,12 @@ function renderProdukList(){
       const selisihHtml = belum ? "—" : (selisihNom === 0
         ? `<span class="num-val">Rp 0</span><div class="sub-note">100% dr rekom</div>`
         : `<span class="num-val">${selisihNom > 0 ? "+" : "-"}${rp(Math.abs(selisihNom))}</span><div class="sub-note">${persenRekom != null ? persenRekom + "% dr rekom" : ""}</div>`);
+      // margin dihitung ulang dari HPP vs masing2 harga -- bukan cuma echo target_margin_persen,
+      // supaya "margin rekom" & "margin aktual" akurat sekalipun beda dari target aslinya
+      const hppNum = Number(p.hpp_terakhir) || 0;
+      const marginRekom = rekom > 0 ? Math.round((rekom - hppNum) / rekom * 100) : null;
+      const marginAktual = hargaEfektif > 0 ? Math.round((hargaEfektif - hppNum) / hargaEfektif * 100) : null;
+      const updateTgl = infoTanggal(p.updated_at).teks;
       return `<tr class="prod-row ${belum ? "belum" : ""} ${edge}" data-id="${esc(p.id)}">
         <td><span class="pnm">${esc(p.nama)}</span>${usang}</td>
         <td>${statusHtml}</td>
@@ -740,14 +746,19 @@ function renderProdukList(){
         <td class="r"><span class="num-val">${belum ? "—" : rp(rekom)}</span></td>
         <td class="r"><span class="num-val hl">${belum ? "—" : rp(hargaEfektif)}</span></td>
         <td class="r">${selisihHtml}</td>
-        <td class="r"><span class="num-val">${p.target_margin_persen}%</span></td>
-        <td class="r"><button class="prod-dup" data-dup="${esc(p.id)}" title="Duplikat produk"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button></td>
+        <td class="r"><span class="num-val">${marginRekom == null ? "—" : marginRekom + "%"}</span></td>
+        <td class="r"><span class="num-val">${marginAktual == null ? "—" : marginAktual + "%"}</span></td>
+        <td><div class="ct-tgl">${belum ? "—" : updateTgl}</div></td>
+        <td class="r">
+          <button class="prod-dup" data-dup="${esc(p.id)}" title="Duplikat produk"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button>
+          <button class="prod-dup" data-log="${esc(p.id)}" title="Log perubahan"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></button>
+        </td>
       </tr>`;
     }).join("");
     return `<div class="prod-card">
       <div class="prod-card-head"><span>${esc(key)}</span><span class="cnt">${grup[key].length}</span></div>
       <div class="prod-table-wrap"><table class="prod-table">
-        <thead><tr><th>Produk</th><th>Status</th><th>Cabang &amp; tanggal</th><th class="r">HPP</th><th class="r">Harga rekomendasi</th><th class="r">Harga jual</th><th class="r">Selisih</th><th class="r">Margin</th><th></th></tr></thead>
+        <thead><tr><th>Produk</th><th>Status</th><th>Cabang &amp; tanggal</th><th class="r">HPP</th><th class="r">Harga rekomendasi</th><th class="r">Harga jual</th><th class="r">Selisih</th><th class="r">Margin rekom</th><th class="r">Margin aktual</th><th>Update terakhir</th><th></th></tr></thead>
         <tbody>${rows}</tbody>
       </table></div>
     </div>`;
@@ -759,6 +770,53 @@ function renderProdukList(){
     openEdit(it.dataset.id);
   }));
   $all("[data-dup]", el).forEach(b => b.addEventListener("click", (e) => { e.stopPropagation(); duplikatProduk(b.dataset.dup); }));
+  $all("[data-log]", el).forEach(b => b.addEventListener("click", (e) => { e.stopPropagation(); bukaLogHppProduk(b.dataset.log); }));
+}
+
+// Popup melayang riwayat perubahan HPP satu produk (dari produk_hpp_history --
+// riwayat di level produk, BUKAN riwayat harga per-bahan dari Cashflow. HPP
+// cuma tersambung ke harga TERKINI tiap bahan, bukan riwayat tiap transaksi
+// belanja, jadi "riwayat kenaikan bahan satu-satu" belum bisa ditampilkan
+// dari sini -- lihat catatan di hargaAcuanClient.ts).
+async function bukaLogHppProduk(produkId){
+  const p = produkList.find(x => x.id === produkId);
+  if (!p) return;
+  let modal = $("#logHppModal");
+  if (!modal){
+    modal = document.createElement("div");
+    modal.id = "logHppModal";
+    modal.className = "dash-modal hidden";
+    modal.innerHTML = `<div class="dm-backdrop"></div>
+      <div class="dm-panel" style="max-width:440px;">
+        <div class="dm-head"><h3 id="lhJudul">Riwayat HPP</h3><button class="icon-btn" id="lhClose" aria-label="Tutup"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
+        <div class="dm-body" id="lhBody"></div>
+      </div>`;
+    document.body.appendChild(modal);
+    modal.querySelector(".dm-backdrop").addEventListener("click", () => modal.classList.add("hidden"));
+    modal.querySelector("#lhClose").addEventListener("click", () => modal.classList.add("hidden"));
+  }
+  $("#lhJudul").textContent = `Riwayat HPP — ${p.nama}`;
+  $("#lhBody").innerHTML = `<div class="empty" style="padding:20px;">Memuat…</div>`;
+  modal.classList.remove("hidden");
+  requestAnimationFrame(() => modal.classList.add("show"));
+
+  const { data } = await sb.from("produk_hpp_history").in("produk_id", [produkId]);
+  const hist = (data || []).slice().sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  if (!hist.length){
+    $("#lhBody").innerHTML = `<div class="empty" style="padding:20px;">Belum ada riwayat tersimpan untuk produk ini.</div>`;
+    return;
+  }
+  $("#lhBody").innerHTML = hist.map((h, i) => {
+    const prev = hist[i + 1];
+    const naik = prev ? Number(h.hpp) - Number(prev.hpp) : null;
+    return `<div style="padding:10px 0;${i < hist.length - 1 ? "border-bottom:1px solid var(--line);" : ""}">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;">
+        <span style="font-weight:700;">${rp(h.hpp)}</span>
+        <span style="font-size:11px;color:var(--ink-faint);">${infoTanggal(h.created_at).teks}</span>
+      </div>
+      <div style="font-size:12px;color:var(--ink-soft);margin-top:2px;">Harga jual ${rp(h.harga_jual)} · margin ${h.margin_persen}%${naik != null && naik !== 0 ? ` · <span style="color:${naik > 0 ? "var(--red)" : "#1E7D46"};font-weight:600;">${naik > 0 ? "▲" : "▼"} ${rp(Math.abs(naik))} dari sebelumnya</span>` : ""}</div>
+    </div>`;
+  }).join("");
 }
 
 function exportPdf(){
