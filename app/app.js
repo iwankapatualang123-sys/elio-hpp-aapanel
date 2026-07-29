@@ -663,7 +663,8 @@ function renderProdukList(){
     } else {
       rich = `<div class="empty-rich"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3h18v18H3z"/></svg></div><h3>Kosong</h3><p>${filterStatus === "sudah" ? "Belum ada produk yang diisi." : "Tidak ada produk di kategori ini."}</p></div>`;
     }
-    el.innerHTML = toolbar + rich;
+    $("#prodListTop").innerHTML = toolbar;
+    el.innerHTML = rich;
     pasangToolbar();
     const ea = $("#empty-add"); if (ea) ea.addEventListener("click", () => { editingProdukId = null; switchTab("add"); });
     return;
@@ -763,7 +764,7 @@ function renderProdukList(){
       </table></div>
     </div>`;
   }).join("");
-  el.innerHTML = toolbar + dash + el.innerHTML;
+  $("#prodListTop").innerHTML = toolbar + dash;
   pasangToolbar();
   $all(".prod-row", el).forEach(it => it.addEventListener("click", (e) => {
     if (e.target.closest(".prod-dup")) return;
