@@ -259,12 +259,11 @@
   .tab svg{ width:16px; height:16px; }
   .tab.active{ background:var(--green); color:#fff; border-color:var(--green); }
 
-  /* Kartu kaca (glass) HIJAU menyatukan hero + header + tabs jadi 1 unit --
-     urutan: hero (judul+stats) dulu paling atas, baru header (logo/user
-     chip/keluar), baru tabs paling bawah. Satu warna hijau translucent
-     (bukan putih) supaya semuanya terasa 1 permukaan, bukan blok terpisah.
-     Header & tabs dapat treatment "kaca di atas kaca" (pill putih tembus
-     pandang, pola sama seperti .cab-dd-btn) krn sekarang duduk di atas hijau. */
+  /* Kartu kaca (glass) HIJAU -- navigasi PATEN (logo+header actions+tabs),
+     sama persis di semua tab, tidak ikut berubah. Konten spesifik tiap tab
+     (statistik "Daftar Produk", hero Dashboard, dst) ada di bagian konten
+     yang scroll di bawahnya, BUKAN di sini lagi -- lihat #prodHero yang
+     sekarang pindah ke dalam #viewList. */
   .app-chrome{
     position:relative;
     background:color-mix(in srgb, var(--green-dark) 60%, transparent);
@@ -273,13 +272,11 @@
     border-radius:18px;
     box-shadow:0 20px 40px -22px rgba(10,40,25,0.35), 0 0 0 1px rgba(255,255,255,0.05) inset;
     overflow:hidden;
-    padding:14px 20px 12px;
+    padding:12px 20px;
     margin-bottom:16px;
   }
   [data-theme="dark"] .app-chrome{ background:color-mix(in srgb, var(--green-dark) 45%, transparent); }
-  .app-chrome .hero{ background:transparent; box-shadow:none; padding:6px 2px 12px; margin:0; }
-  .app-chrome .hero-stats{ margin-top:10px; gap:18px; }
-  .app-chrome header{ margin:6px 0; padding-top:10px; border-top:1px solid rgba(255,255,255,0.14); }
+  .app-chrome header{ margin:0 0 10px; }
   .app-chrome .brand .name{ color:#fff; }
   .app-chrome .brand .sub{ color:rgba(255,255,255,0.72); }
   .app-chrome .brand .btn-ghost{ color:#fff; }
@@ -288,19 +285,15 @@
   .app-chrome .theme-toggle:hover{ background:rgba(255,255,255,0.24); }
   .app-chrome .btn-danger{ background:rgba(255,255,255,0.14); border-color:rgba(255,255,255,0.24); color:#fff; box-shadow:none; }
   .app-chrome .btn-danger:hover{ background:rgba(255,255,255,0.24); }
-  .app-chrome .tabs{ margin:8px 0 0; }
+  .app-chrome .tabs{ margin:0; }
   .app-chrome .tab{ background:transparent; border-color:transparent; box-shadow:none; color:rgba(255,255,255,0.72); }
   .app-chrome .tab:hover{ background:rgba(255,255,255,0.12); }
   .app-chrome .tab.active{ background:rgba(255,255,255,0.18); color:#fff; box-shadow:none; }
-  /* #menuScreen: header duluan baru menu-hero (bukan hero-duluan seperti
-     #appScreen) -- header di sini tidak butuh garis pemisah di atasnya. */
+  /* #menuScreen: layar terpisah (bukan bagian dari tab-switching FNB),
+     hero-nya tetap digabung di sini apa adanya. */
   #menuScreen .app-chrome header{ padding-top:0; border-top:none; margin:0 0 6px; }
   #menuScreen .app-chrome .menu-hero{ background:transparent; box-shadow:none; border-radius:0; margin:0; padding:16px 2px 12px; }
-  /* Tab dash/add/kelola: hero sendiri (.dash-hero/.sub-hero) nyambung rapat
-     ke bawah .app-chrome -- lihat toggle .continues di switchTab(). */
-  .app-chrome.continues{ border-radius:18px 18px 0 0; margin-bottom:0; box-shadow:none; border-bottom:none; }
-  #viewDash .dash-hero, #viewAdd .sub-hero, #viewKelola .sub-hero{ border-radius:0 0 14px 14px; margin-top:0; }
-  @media (max-width:640px){ .app-chrome{ padding:12px 16px 10px; border-radius:16px; } }
+  @media (max-width:640px){ .app-chrome{ padding:10px 16px; border-radius:16px; } }
 
   .empty{ text-align:center; padding:40px 20px; color:var(--ink-faint); font-size:14px; }
   .toast{ position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(20px); background:var(--ink); color:#fff; padding:12px 20px; border-radius:12px; font-size:14px; opacity:0; pointer-events:none; transition:all .3s; z-index:100; box-shadow:var(--shadow-lg); }
@@ -482,6 +475,7 @@
     .app-sidebar{ position:static; height:100%; overflow-y:auto; }
     .app-content{ height:100%; display:flex; flex-direction:column; overflow:hidden; }
     #viewList{ flex:1; min-height:0; display:flex; flex-direction:column; overflow:hidden; }
+    #prodHero{ flex-shrink:0; }
     #prodListTop{ flex-shrink:0; }
     #prodList{ flex:1; min-height:0; overflow-y:auto; }
     #viewAdd, #viewKelola{ flex:1; min-height:0; overflow-y:auto; }
@@ -765,8 +759,6 @@
 <div id="appScreen" class="hidden">
   <div class="wrap wide">
     <div class="app-chrome">
-      <div id="prodHero"></div>
-
       <header>
         <div class="brand">
           <button class="btn btn-ghost btn-sm" id="backMenu" style="padding:6px;"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg></button>
@@ -801,6 +793,7 @@
         <aside class="app-sidebar" id="appSidebar"></aside>
         <main class="app-content">
           <div id="viewList">
+            <div id="prodHero"></div>
             <div id="prodListTop"></div>
             <div id="prodList"></div>
           </div>

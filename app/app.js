@@ -1949,15 +1949,11 @@ function switchTab(tab){
   $("#viewList").classList.toggle("hidden", tab !== "list");
   $("#viewAdd").classList.toggle("hidden", tab !== "add");
   $("#viewKelola").classList.toggle("hidden", tab !== "kelola");
-  // hero & layout 2 kolom hanya di tab produk/tambah/kelola, bukan dashboard
-  const hero = $("#prodHero"); if (hero) hero.style.display = tab === "list" ? "" : "none";
+  // layout 2 kolom hanya di tab produk/tambah/kelola, bukan dashboard.
+  // #prodHero sekarang di dalam #viewList (bukan di .app-chrome lagi) jadi
+  // ikut ter-hide otomatis lewat toggle #viewList di atas, tidak perlu
+  // ditoggle terpisah.
   const layout = document.querySelector("#fnbSection .app-layout"); if (layout) layout.style.display = tab === "dash" ? "none" : "";
-  // tab dash/add/kelola punya hero sendiri (.dash-hero/.sub-hero) tepat di
-  // bawah .app-chrome -- kotakkan sisi bawah .app-chrome & sisi atas hero itu
-  // supaya nyambung rapat (satu permukaan visual), bukan 2 kartu hijau
-  // bertumpuk dengan celah di antaranya. Tab "list" hero-nya sudah di dalam
-  // .app-chrome sendiri jadi tidak perlu ini.
-  const chrome = $(".app-chrome"); if (chrome) chrome.classList.toggle("continues", tab !== "list");
   if (tab === "add" && !editingProdukId) newForm();
   if (tab === "kelola") renderKelola();
   else if (tab === "dash") renderDashboard();
