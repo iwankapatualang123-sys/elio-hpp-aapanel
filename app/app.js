@@ -1341,7 +1341,7 @@ function bukaBahanManualModal(prefill, target){
           <div class="field"><label>Harga pembelian (Rp)</label><input type="number" id="bmm-hargabeli" min="0" step="1" placeholder="mis. 15000"></div>
           <div class="field-row">
             <div class="field"><label>Jumlah didapat</label><input type="number" id="bmm-jumlah" min="0" step="0.01" placeholder="mis. 500"></div>
-            <div class="field"><label>Satuan</label><select id="bmm-satuan"><option value="gr">gr</option><option value="ml">ml</option><option value="pcs">pcs</option></select></div>
+            <div class="field"><label>Satuan</label><select id="bmm-satuan">${satuanOptionsHtml("gr")}</select></div>
           </div>
           <div class="bmm-hasil" id="bmm-hasil"></div>
           <div class="field" style="margin-top:14px;"><label id="bmm-pakai-label">Jumlah pemakaian di resep ini</label><input type="number" id="bmm-pakai" min="0" step="0.01" placeholder="0"></div>
@@ -1523,11 +1523,11 @@ function renderEditBahanBody(i){
       <button class="drow-reset" data-act="reset-hbeli" aria-label="Reset" ${hbOver ? "" : "style=visibility:hidden"}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 4v6h6M23 20v-6h-6"/><path d="M3.5 9a9 9 0 0114.9-3.4L23 10M1 14l4.6 4.4A9 9 0 0020.5 15"/></svg></button>
     </div>
     ${!hbOver && tglInfo.lama ? `<div class="tgl-usang">Harga ${tglInfo.hari} hari lalu — mungkin sudah berubah</div>` : ""}
-    ${isPerPcs ? "" : `<div class="drow">
-      <span class="drow-lbl">Isi per kemasan</span>
-      <div class="drow-in"><input type="number" step="1" value="${isi}" data-act="isi"><span class="u">${esc(unit)}</span></div>
+    <div class="drow">
+      <span class="drow-lbl">Isi per kemasan &amp; satuan</span>
+      <div class="drow-in"><input type="number" step="1" value="${isi}" data-act="isi"><select class="u-sel" data-act="unit">${satuanOptionsHtml(unit)}</select></div>
       <span style="width:22px;"></span>
-    </div>`}
+    </div>
     <div class="drow">
       <span class="drow-lbl">Harga per ${esc(unit)} <small>${prOver ? "diubah manual" : "otomatis"}</small></span>
       <div class="drow-in ${prOver ? "" : "calc"}"><input type="number" step="0.01" value="${price.toFixed(2)}" data-act="perunit"><span class="u">/${esc(unit)}</span></div>
@@ -1544,8 +1544,12 @@ function renderEditBahanBody(i){
   if (qtyEl) qtyEl.addEventListener("input", (e) => { formBahan[i].qty = parseFloat(e.target.value) || 0; recalc(); renderFormBahan(); autoDraft(); });
   const hbeliEl = bodyEl.querySelector('[data-act="hbeli"]');
   if (hbeliEl) hbeliEl.addEventListener("change", (e) => { formBahan[i].hargaBeliOverride = parseFloat(e.target.value) || 0; formBahan[i].override = null; renderEditBahanBody(i); renderFormBahan(); recalc(); autoDraft(); });
+  // isi & satuan disimpan lewat simpanKonversi -> persist ke material_konversi
+  // (diingat lintas produk & setelah reload), bukan cuma diubah lokal.
   const isiEl = bodyEl.querySelector('[data-act="isi"]');
-  if (isiEl) isiEl.addEventListener("change", (e) => { const v = parseFloat(e.target.value); if (v > 0){ formBahan[i].konv = { isi: v, unit: effUnit(formBahan[i]) }; formBahan[i].override = null; renderEditBahanBody(i); renderFormBahan(); recalc(); autoDraft(); } });
+  if (isiEl) isiEl.addEventListener("change", (e) => { const v = parseFloat(e.target.value); if (v > 0){ formBahan[i].override = null; simpanKonversi(formBahan[i], i, v, effUnit(formBahan[i])); } });
+  const unitEl = bodyEl.querySelector('[data-act="unit"]');
+  if (unitEl) unitEl.addEventListener("change", (e) => { formBahan[i].override = null; simpanKonversi(formBahan[i], i, bahanIsi(formBahan[i]), e.target.value); });
   const perunitEl = bodyEl.querySelector('[data-act="perunit"]');
   if (perunitEl) perunitEl.addEventListener("change", (e) => { formBahan[i].override = parseFloat(e.target.value) || 0; renderEditBahanBody(i); renderFormBahan(); recalc(); autoDraft(); });
   const resetHb = bodyEl.querySelector('[data-act="reset-hbeli"]');
@@ -1554,6 +1558,20 @@ function renderEditBahanBody(i){
   if (resetPu) resetPu.addEventListener("click", () => { formBahan[i].override = null; renderEditBahanBody(i); renderFormBahan(); recalc(); autoDraft(); });
   const ubahBtn = bodyEl.querySelector('[data-act="ubahsatuan"]');
   if (ubahBtn) ubahBtn.addEventListener("click", () => { formBahan[i].konv = null; formBahan[i].override = null; $("#editBahanModal").classList.add("hidden"); renderFormBahan(); recalc(); autoDraft(); });
+}
+
+// Opsi satuan pakai -- dipakai SEMUA dropdown satuan (edit bahan, lengkapi
+// satuan, kondimen, bahan manual). Nilai internal ringkas (gr/kg/ons/pcs/ml);
+// data lama cuma pakai gr/ml/pcs -> tetap cocok jadi salah satu opsi.
+const SATUAN_OPTS = [
+  { v:"gr", t:"gram" },
+  { v:"kg", t:"kilogram" },
+  { v:"ons", t:"Ons" },
+  { v:"pcs", t:"Pcs" },
+  { v:"ml", t:"ML" },
+];
+function satuanOptionsHtml(sel){
+  return SATUAN_OPTS.map(o => `<option value="${o.v}" ${o.v===sel?"selected":""}>${o.t}</option>`).join("");
 }
 
 function deteksiSatuan(nama){
@@ -1592,11 +1610,7 @@ function lengkapiSatuan(row, i){
       <button class="btn btn-sm btn-primary" data-perpcs style="width:100%;margin-bottom:8px;">Pakai per pcs (sama dengan satuan beli)</button>
       <div class="setup-box">
         <input type="number" placeholder="isi per kemasan" value="${det ? det.isi : ""}" data-isi>
-        <select data-unit>
-          <option value="gr" ${det && det.unit === "gr" ? "selected" : ""}>gr</option>
-          <option value="ml" ${det && det.unit === "ml" ? "selected" : ""}>ml</option>
-          <option value="pcs" ${det && det.unit === "pcs" ? "selected" : ""}>pcs</option>
-        </select>
+        <select data-unit>${satuanOptionsHtml(det ? det.unit : "gr")}</select>
         <button class="btn btn-sm btn-primary" data-savesat>Simpan</button>
       </div>
     </div>`;
@@ -2320,11 +2334,7 @@ function renderKondimenBahan(){
         <button class="btn btn-sm btn-primary" data-kperpcs="${i}" style="width:100%;margin:6px 0;">Pakai per pcs (sama dengan satuan beli)</button>
         <div class="setup-box">
           <input type="number" placeholder="isi per kemasan" value="${det ? det.isi : ""}" data-kisi="${i}">
-          <select data-kunit="${i}">
-            <option value="gr" ${det && det.unit === "gr" ? "selected" : ""}>gr</option>
-            <option value="ml" ${det && det.unit === "ml" ? "selected" : ""}>ml</option>
-            <option value="pcs" ${det && det.unit === "pcs" ? "selected" : ""}>pcs</option>
-          </select>
+          <select data-kunit="${i}">${satuanOptionsHtml(det ? det.unit : "gr")}</select>
           <button class="btn btn-sm btn-primary" data-ksavesat="${i}">Simpan</button>
         </div>
       </div>`;
