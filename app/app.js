@@ -1371,120 +1371,128 @@ function effPrice(b){
 }
 function effUnit(b){ return b.konv ? b.konv.unit : "kemasan"; }
 
-let bahanOpen = {};  // index -> true kalau baris terbuka
-
 function renderFormBahan(){
   const el = $("#f-bahan");
   if (!formBahan.length){ el.innerHTML = '<div class="empty" style="padding:20px;">Belum ada bahan dipilih.</div>'; return; }
-  el.innerHTML = formBahan.map((b, i) => {
-    const price = effPrice(b), unit = effUnit(b), needsSetup = !b.konv;
+  const rows = formBahan.map((b, i) => {
+    const needsSetup = !b.konv;
     if (needsSetup){
-      return `<div class="bahan-row" data-i="${i}">
-        <div class="brow-main" style="cursor:default;">
-          <span class="brow-nm">${esc(b.nama)}</span>
-          <span></span><span></span>
-          <button class="drow-reset" data-act="rm" aria-label="Hapus" style="width:18px;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
-        </div>
-        <div class="brow-warn">
-          <span class="txt"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h16.9a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg> Lengkapi satuan dulu</span>
-          <button class="btn btn-sm btn-primary" data-act="lengkapi" style="margin-left:auto;">Lengkapi</button>
-        </div>
-      </div>`;
+      return `<tr class="bahan-row" data-i="${i}">
+        <td colspan="4">
+          <div class="brow-flat">
+            <span class="pnm">${esc(b.nama)}</span>
+            <button class="prod-dup" data-act="rm" aria-label="Hapus"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14z"/><path d="M10 11v6M14 11v6"/></svg></button>
+          </div>
+          <div class="brow-warn">
+            <span class="txt"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h16.9a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg> Lengkapi satuan dulu</span>
+            <button class="btn btn-sm btn-primary" data-act="lengkapi" style="margin-left:auto;">Lengkapi</button>
+          </div>
+        </td>
+      </tr>`;
     }
-    const hb = bahanHargaBeli(b), isi = bahanIsi(b);
-    const isPerPcs = isi === 1 && unit === "pcs";
-    const hbOver = (b.hargaBeliOverride !== null && b.hargaBeliOverride !== undefined);
-    const prOver = (b.override !== null && b.override !== undefined);
+    const price = effPrice(b), unit = effUnit(b);
     const sub = price * (b.qty || 0);
-    const tglInfo = infoTanggal(b.tanggal);
-    const open = !!bahanOpen[i];
-    return `<div class="bahan-row ${open ? "open" : ""}" data-i="${i}">
-      <div class="brow-main" data-act="toggle">
-        <span class="brow-nm">${esc(b.nama)}</span>
-        <span class="brow-qty"><b>${b.qty || 0}</b> ${esc(unit)} &times; ${price.toFixed(2)}</span>
-        <span class="brow-sub">${rp(sub)}</span>
-        <svg class="brow-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>
-      </div>
-      ${open ? `<div class="brow-detail">
-        <div class="drow">
-          <span class="drow-lbl">Harga beli <small>${hbOver ? "diubah manual" : "DB kasir &middot; " + tglInfo.teks}</small></span>
-          <div class="drow-in"><input type="number" step="1" value="${hb}" data-act="hbeli"><span class="u">/kms</span></div>
-          <button class="drow-reset" data-act="reset-hbeli" aria-label="Reset" ${hbOver ? "" : "style=visibility:hidden"}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 4v6h6M23 20v-6h-6"/><path d="M3.5 9a9 9 0 0114.9-3.4L23 10M1 14l4.6 4.4A9 9 0 0020.5 15"/></svg></button>
-        </div>
-        ${!hbOver && tglInfo.lama ? `<div class="tgl-usang">Harga ${tglInfo.hari} hari lalu — mungkin sudah berubah</div>` : ""}
-        ${isPerPcs ? "" : `<div class="drow">
-          <span class="drow-lbl">Isi per kemasan</span>
-          <div class="drow-in"><input type="number" step="1" value="${isi}" data-act="isi"><span class="u">${esc(unit)}</span></div>
-          <span style="width:22px;"></span>
-        </div>`}
-        <div class="drow">
-          <span class="drow-lbl">Harga per ${esc(unit)} <small>${prOver ? "diubah manual" : "otomatis"}</small></span>
-          <div class="drow-in ${prOver ? "" : "calc"}"><input type="number" step="0.01" value="${price.toFixed(2)}" data-act="perunit"><span class="u">/${esc(unit)}</span></div>
-          <button class="drow-reset" data-act="reset-perunit" aria-label="Auto" ${prOver ? "" : "style=visibility:hidden"}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 4v6h6M23 20v-6h-6"/><path d="M3.5 9a9 9 0 0114.9-3.4L23 10M1 14l4.6 4.4A9 9 0 0020.5 15"/></svg></button>
-        </div>
-        <div class="drow">
-          <span class="drow-lbl">Jumlah dipakai</span>
-          <div class="drow-in"><input type="number" min="0" step="0.1" value="${b.qty}" data-act="qty"><span class="u">${esc(unit)}</span></div>
-          <span style="width:22px;"></span>
-        </div>
-        <div class="drow" style="display:flex;justify-content:space-between;gap:8px;">
-          <button class="btn btn-sm" data-act="ubahsatuan" style="font-size:12px;">Ubah satuan</button>
-          <button class="btn btn-sm btn-danger" data-act="rm" style="font-size:12px;">Hapus bahan</button>
-        </div>
-      </div>` : ""}
-    </div>`;
+    return `<tr class="bahan-row" data-i="${i}">
+      <td><span class="pnm">${esc(b.nama)}</span></td>
+      <td class="r"><span class="num-val">${b.qty || 0} ${esc(unit)}</span></td>
+      <td class="r"><span class="num-val">${price.toFixed(2)}</span></td>
+      <td class="r"><span class="num-val hl">${rp(sub)}</span></td>
+      <td class="r">
+        <button class="prod-dup" data-act="edit" title="Edit"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.1 2.1 0 013 3L12 15l-4 1 1-4z"/></svg></button>
+        <button class="prod-dup" data-act="rm" title="Hapus"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14z"/><path d="M10 11v6M14 11v6"/></svg></button>
+      </td>
+    </tr>`;
   }).join("");
+  el.innerHTML = `<div class="prod-table-wrap"><table class="prod-table bahan-table">
+    <thead><tr><th>Bahan</th><th class="r">Qty</th><th class="r">Harga/satuan</th><th class="r">Subtotal</th><th></th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table></div>`;
 
   $all(".bahan-row", el).forEach(row => {
     const i = +row.dataset.i;
-    const toggle = row.querySelector('[data-act="toggle"]');
-    if (toggle) toggle.addEventListener("click", (e) => {
-      if (e.target.closest("input,button")) return;
-      bahanOpen[i] = !bahanOpen[i]; renderFormBahan();
-    });
-    $all('[data-act="rm"]', row).forEach(btn => btn.addEventListener("click", () => { formBahan.splice(i, 1); delete bahanOpen[i]; renderFormBahan(); recalc(); }));
-    const qtyEl = row.querySelector('[data-act="qty"]');
-    if (qtyEl) qtyEl.addEventListener("input", (e) => { formBahan[i].qty = parseFloat(e.target.value) || 0; recalc(); updateBrowMain(i); });
-    const hbeliEl = row.querySelector('[data-act="hbeli"]');
-    if (hbeliEl) hbeliEl.addEventListener("change", (e) => { formBahan[i].hargaBeliOverride = parseFloat(e.target.value) || 0; formBahan[i].override = null; renderFormBahan(); recalc(); });
-    const isiEl = row.querySelector('[data-act="isi"]');
-    if (isiEl) isiEl.addEventListener("change", (e) => { const v = parseFloat(e.target.value); if (v > 0){ formBahan[i].konv = { isi: v, unit: effUnit(formBahan[i]) }; formBahan[i].override = null; renderFormBahan(); recalc(); } });
-    const perunitEl = row.querySelector('[data-act="perunit"]');
-    if (perunitEl) perunitEl.addEventListener("change", (e) => { formBahan[i].override = parseFloat(e.target.value) || 0; renderFormBahan(); recalc(); });
-    const resetHb = row.querySelector('[data-act="reset-hbeli"]');
-    if (resetHb) resetHb.addEventListener("click", () => { formBahan[i].hargaBeliOverride = null; formBahan[i].override = null; renderFormBahan(); recalc(); });
-    const resetPu = row.querySelector('[data-act="reset-perunit"]');
-    if (resetPu) resetPu.addEventListener("click", () => { formBahan[i].override = null; renderFormBahan(); recalc(); });
+    $all('[data-act="rm"]', row).forEach(btn => btn.addEventListener("click", () => { formBahan.splice(i, 1); renderFormBahan(); recalc(); autoDraft(); }));
+    const editBtn = row.querySelector('[data-act="edit"]');
+    if (editBtn) editBtn.addEventListener("click", () => bukaEditBahanModal(i));
     const lengkapiBtn = row.querySelector('[data-act="lengkapi"]');
     if (lengkapiBtn) lengkapiBtn.addEventListener("click", () => lengkapiSatuan(row, i));
-    const ubahBtn = row.querySelector('[data-act="ubahsatuan"]');
-    if (ubahBtn) ubahBtn.addEventListener("click", () => { formBahan[i].konv = null; formBahan[i].override = null; bahanOpen[i] = false; renderFormBahan(); const r = $(`.bahan-row[data-i="${i}"]`); lengkapiSatuan(r, i); });
   });
   recalc();
 }
 
-function updateBrowMain(i){
-  const b = formBahan[i];
-  const row = $(`.bahan-row[data-i="${i}"]`);
-  if (!row) return;
-  const price = effPrice(b), unit = effUnit(b);
-  const qEl = row.querySelector(".brow-qty"), sEl = row.querySelector(".brow-sub");
-  if (qEl) qEl.innerHTML = `<b>${b.qty || 0}</b> ${esc(unit)} &times; ${price.toFixed(2)}`;
-  if (sEl) sEl.textContent = rp(price * (b.qty || 0));
+// Popup edit satu bahan (harga beli, isi kemasan, override harga/satuan, qty
+// dipakai) -- dulu ini expand inline di bawah baris, sekarang di popup supaya
+// baris tabel tetap ringkas. Modal ini elemen TERPISAH dari #f-bahan (di-append
+// ke document.body), jadi renderFormBahan() (rebuild tabel di belakang) aman
+// dipanggil tiap kali ada perubahan tanpa bikin input di modal kehilangan fokus.
+function bukaEditBahanModal(i){
+  let modal = $("#editBahanModal");
+  if (!modal){
+    modal = document.createElement("div");
+    modal.id = "editBahanModal";
+    modal.className = "dash-modal hidden";
+    modal.innerHTML = `<div class="dm-backdrop"></div>
+      <div class="dm-panel" style="max-width:420px;">
+        <div class="dm-head"><h3 id="ebJudul">Edit Bahan</h3><button class="icon-btn" id="ebClose" aria-label="Tutup"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
+        <div class="dm-body" id="ebBody"></div>
+      </div>`;
+    document.body.appendChild(modal);
+    modal.querySelector(".dm-backdrop").addEventListener("click", () => modal.classList.add("hidden"));
+    modal.querySelector("#ebClose").addEventListener("click", () => modal.classList.add("hidden"));
+  }
+  renderEditBahanBody(i);
+  modal.classList.remove("hidden");
+  requestAnimationFrame(() => modal.classList.add("show"));
 }
 
-function recalcSub(i){ recalc(); }
-
-function editPrice(row, i){
-  const cell = row.querySelector("[data-price]");
-  const price = effPrice(formBahan[i]);
-  cell.innerHTML = `<input type="number" step="0.01" value="${price.toFixed(2)}" data-pin>
-    <button class="icon-btn" data-pok aria-label="Simpan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg></button>`;
-  const inp = cell.querySelector("[data-pin]"); inp.focus();
-  cell.querySelector("[data-pok]").addEventListener("click", () => {
-    formBahan[i].override = parseFloat(inp.value) || 0; renderFormBahan(); recalc();
-  });
-  inp.addEventListener("keydown", (e) => { if (e.key === "Enter") cell.querySelector("[data-pok]").click(); });
+function renderEditBahanBody(i){
+  const b = formBahan[i];
+  if (!b) { $("#editBahanModal") && $("#editBahanModal").classList.add("hidden"); return; }
+  const price = effPrice(b), unit = effUnit(b);
+  const hb = bahanHargaBeli(b), isi = bahanIsi(b);
+  const isPerPcs = isi === 1 && unit === "pcs";
+  const hbOver = (b.hargaBeliOverride !== null && b.hargaBeliOverride !== undefined);
+  const prOver = (b.override !== null && b.override !== undefined);
+  const tglInfo = infoTanggal(b.tanggal);
+  $("#ebJudul").textContent = "Edit — " + b.nama;
+  const bodyEl = $("#ebBody");
+  bodyEl.innerHTML = `
+    <div class="drow">
+      <span class="drow-lbl">Harga beli <small>${hbOver ? "diubah manual" : "DB kasir &middot; " + tglInfo.teks}</small></span>
+      <div class="drow-in"><input type="number" step="1" value="${hb}" data-act="hbeli"><span class="u">/kms</span></div>
+      <button class="drow-reset" data-act="reset-hbeli" aria-label="Reset" ${hbOver ? "" : "style=visibility:hidden"}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 4v6h6M23 20v-6h-6"/><path d="M3.5 9a9 9 0 0114.9-3.4L23 10M1 14l4.6 4.4A9 9 0 0020.5 15"/></svg></button>
+    </div>
+    ${!hbOver && tglInfo.lama ? `<div class="tgl-usang">Harga ${tglInfo.hari} hari lalu — mungkin sudah berubah</div>` : ""}
+    ${isPerPcs ? "" : `<div class="drow">
+      <span class="drow-lbl">Isi per kemasan</span>
+      <div class="drow-in"><input type="number" step="1" value="${isi}" data-act="isi"><span class="u">${esc(unit)}</span></div>
+      <span style="width:22px;"></span>
+    </div>`}
+    <div class="drow">
+      <span class="drow-lbl">Harga per ${esc(unit)} <small>${prOver ? "diubah manual" : "otomatis"}</small></span>
+      <div class="drow-in ${prOver ? "" : "calc"}"><input type="number" step="0.01" value="${price.toFixed(2)}" data-act="perunit"><span class="u">/${esc(unit)}</span></div>
+      <button class="drow-reset" data-act="reset-perunit" aria-label="Auto" ${prOver ? "" : "style=visibility:hidden"}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 4v6h6M23 20v-6h-6"/><path d="M3.5 9a9 9 0 0114.9-3.4L23 10M1 14l4.6 4.4A9 9 0 0020.5 15"/></svg></button>
+    </div>
+    <div class="drow">
+      <span class="drow-lbl">Jumlah dipakai</span>
+      <div class="drow-in"><input type="number" min="0" step="0.1" value="${b.qty}" data-act="qty"><span class="u">${esc(unit)}</span></div>
+      <span style="width:22px;"></span>
+    </div>
+    <button class="btn btn-sm btn-block" data-act="ubahsatuan" style="margin-top:4px;">Ubah satuan</button>
+  `;
+  const qtyEl = bodyEl.querySelector('[data-act="qty"]');
+  if (qtyEl) qtyEl.addEventListener("input", (e) => { formBahan[i].qty = parseFloat(e.target.value) || 0; recalc(); renderFormBahan(); autoDraft(); });
+  const hbeliEl = bodyEl.querySelector('[data-act="hbeli"]');
+  if (hbeliEl) hbeliEl.addEventListener("change", (e) => { formBahan[i].hargaBeliOverride = parseFloat(e.target.value) || 0; formBahan[i].override = null; renderEditBahanBody(i); renderFormBahan(); recalc(); autoDraft(); });
+  const isiEl = bodyEl.querySelector('[data-act="isi"]');
+  if (isiEl) isiEl.addEventListener("change", (e) => { const v = parseFloat(e.target.value); if (v > 0){ formBahan[i].konv = { isi: v, unit: effUnit(formBahan[i]) }; formBahan[i].override = null; renderEditBahanBody(i); renderFormBahan(); recalc(); autoDraft(); } });
+  const perunitEl = bodyEl.querySelector('[data-act="perunit"]');
+  if (perunitEl) perunitEl.addEventListener("change", (e) => { formBahan[i].override = parseFloat(e.target.value) || 0; renderEditBahanBody(i); renderFormBahan(); recalc(); autoDraft(); });
+  const resetHb = bodyEl.querySelector('[data-act="reset-hbeli"]');
+  if (resetHb) resetHb.addEventListener("click", () => { formBahan[i].hargaBeliOverride = null; formBahan[i].override = null; renderEditBahanBody(i); renderFormBahan(); recalc(); autoDraft(); });
+  const resetPu = bodyEl.querySelector('[data-act="reset-perunit"]');
+  if (resetPu) resetPu.addEventListener("click", () => { formBahan[i].override = null; renderEditBahanBody(i); renderFormBahan(); recalc(); autoDraft(); });
+  const ubahBtn = bodyEl.querySelector('[data-act="ubahsatuan"]');
+  if (ubahBtn) ubahBtn.addEventListener("click", () => { formBahan[i].konv = null; formBahan[i].override = null; $("#editBahanModal").classList.add("hidden"); renderFormBahan(); recalc(); autoDraft(); });
 }
 
 function deteksiSatuan(nama){
@@ -1507,9 +1515,9 @@ async function simpanKonversi(b, i, isi, unit){
     konversiMap[b.nama_normal] = { isi, unit };
   }
   formBahan[i].konv = { isi, unit };
-  bahanOpen[i] = true;
   renderFormBahan(); recalc();
   toast("Satuan dilengkapi");
+  bukaEditBahanModal(i);
 }
 
 function lengkapiSatuan(row, i){
@@ -2278,7 +2286,9 @@ function renderKondimenBahan(){
   // biar kolom qty bisa diketik multi-digit — render ulang setiap keystroke
   // menghancurkan & bikin ulang elemen input-nya, jadi fokus hilang tiap
   // karakter (persis keluhan yang dilaporkan: "tidak bisa diketik lebih dari
-  // 1 angka"). Pola sama seperti updateBrowMain() di form produk utama.
+  // 1 angka"). Input qty bahan di form produk utama sekarang di dalam popup
+  // edit (elemen terpisah dari tabelnya) jadi aman render ulang penuh --
+  // qty di sini beda krn input-nya nempel langsung di tabel yang sama.
   $all("[data-kq]", el).forEach(inp => inp.addEventListener("input", (ev) => {
     const i = +ev.target.dataset.kq;
     e.bahan[i].qty = parseFloat(ev.target.value) || 0;
