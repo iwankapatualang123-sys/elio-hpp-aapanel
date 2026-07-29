@@ -104,9 +104,9 @@ model ProdukLog {
   id         String   @id
   produkId   String   @map("produk_id")
   produkNama String   @map("produk_nama") // denormalized — log tetap terbaca walau nama produk berubah/produk terhapus
-  aksi       String // 'buat' | 'edit' | 'hapus'
+  aksi       String // 'buat' | 'edit' | 'hapus' | 'update-harga' (tombol manual) | 'update-harga-otomatis' (jadwal harian, lihat src/jobs/refreshHarga.ts)
   detail     String?  @db.Text
-  oleh       String // selalu "user HPP" saat ini (satu akun bersama, tidak ada identitas per-user)
+  oleh       String // "user HPP" (aksi manual) atau "sistem (auto)" (jadwal harian refreshHarga.ts)
   createdAt  DateTime @default(now()) @map("created_at")
 
   produk Produk @relation(fields: [produkId], references: [id], onDelete: Restrict)

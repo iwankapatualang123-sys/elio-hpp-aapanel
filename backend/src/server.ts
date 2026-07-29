@@ -1,7 +1,9 @@
 import 'express-async-errors';
 import express from 'express';
 import cors from 'cors';
+import cron from 'node-cron';
 import { env } from './config/env';
+import { refreshSemuaHarga } from './jobs/refreshHarga';
 import authRoutes from './routes/auth';
 import produkRoutes from './routes/produk';
 import resepBahanRoutes from './routes/resepBahan';
@@ -46,4 +48,17 @@ app.use((err: any, _req: express.Request, res: express.Response, _next: express.
 
 app.listen(env.port, () => {
   console.log(`Elio HPP backend listening on port ${env.port}`);
+});
+
+// Refresh HPP semua produk otomatis tiap hari jam 03:00 (waktu server) --
+// versi terjadwal dari tombol "Update Harga" manual di Daftar Produk.
+// TIDAK PERNAH menyentuh harga_jual_aktual, lihat src/jobs/refreshHarga.ts.
+cron.schedule('0 3 * * *', async () => {
+  console.log('[refreshHarga] mulai jalan otomatis...');
+  try {
+    const hasil = await refreshSemuaHarga();
+    console.log('[refreshHarga] selesai:', hasil);
+  } catch (err: any) {
+    console.error('[refreshHarga] gagal:', err.message);
+  }
 });
