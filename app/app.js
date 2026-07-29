@@ -479,22 +479,35 @@ let currentTab = "list";
 // Menu navigasi utama -- dulu tab di top bar, sekarang pindah ke ATAS sidebar
 // (sama di semua tab, bikin sidebar konsisten & top bar cukup jadi 1 area
 // header logo+aksi saja). data-nav dibinding via bindNav().
+// 4 menu utama (disederhanakan atas permintaan user): Dashboard, Produk,
+// Kondimen, Pengaturan. "Tambah" tidak lagi menu -- diakses via tombol
+// "+ Tambah" di halaman Produk. "Kondimen" & "Pengaturan" dua-duanya render
+// view Kelola, dibedakan lewat kelolaSub (kondimen vs kategori/cabang/log).
 const NAV_ITEMS = [
   { k:"dash", t:"Dashboard", ic:'<rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/>' },
   { k:"list", t:"Produk", ic:'<path d="M3 6h18M3 12h18M3 18h18"/>' },
-  { k:"add", t:"Tambah", ic:'<path d="M12 5v14M5 12h14"/>' },
-  { k:"kelola", t:"Kelola", ic:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>' },
+  { k:"kondimen", t:"Kondimen", ic:'<path d="M12 2l2 5 5 .5-4 3.5 1 5-4-2.5L8 19l1-5-4-3.5 5-.5z"/>' },
+  { k:"pengaturan", t:"Pengaturan", ic:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>' },
 ];
+// nav aktif diturunkan dari currentTab + kelolaSub (Tambah/Edit produk ikut
+// menyorot "Produk"; Kelola disorot "Kondimen" atau "Pengaturan").
+function activeNav(){
+  if (currentTab === "dash") return "dash";
+  if (currentTab === "kelola") return kelolaSub === "kondimen" ? "kondimen" : "pengaturan";
+  return "list";
+}
 function navMenuHtml(){
+  const act = activeNav();
   return `<div class="side-nav">` + NAV_ITEMS.map(m =>
-    `<div class="side-menu-item ${currentTab===m.k?"active":""}" data-nav="${m.k}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${m.ic}</svg>${m.t}</div>`
+    `<div class="side-menu-item ${act===m.k?"active":""}" data-nav="${m.k}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${m.ic}</svg>${m.t}</div>`
   ).join("") + `</div>`;
 }
 function bindNav(el){
   $all("[data-nav]", el).forEach(it => it.addEventListener("click", () => {
-    const t = it.dataset.nav;
-    if (t === "add") editingProdukId = null;
-    switchTab(t);
+    const n = it.dataset.nav;
+    if (n === "kondimen"){ kelolaSub = "kondimen"; kondimenEdit = null; switchTab("kelola"); }
+    else if (n === "pengaturan"){ if (kelolaSub === "kondimen") kelolaSub = "kategori"; switchTab("kelola"); }
+    else switchTab(n); // dash, list
   }));
 }
 
@@ -503,11 +516,17 @@ function renderSidebar(){
   if (!el) return;
   const nav = navMenuHtml();
 
-  // Kelola: nav + menu pengaturan
+  // Kelola view: Kondimen (nav saja) atau Pengaturan (nav + submenu)
   if (currentTab === "kelola"){
+    // Kondimen sekarang menu utama sendiri -- tidak perlu submenu
+    if (kelolaSub === "kondimen"){
+      el.innerHTML = nav;
+      bindNav(el);
+      return;
+    }
+    // Pengaturan: kategori, cabang, log (kondimen dipindah jadi menu utama)
     const menu = [
       { k:"kategori", t:"Kategori", ic:'<path d="M3 7h18M3 12h18M3 17h18"/>' },
-      { k:"kondimen", t:"Material Kondimen", ic:'<path d="M12 2l2 5 5 .5-4 3.5 1 5-4-2.5L8 19l1-5-4-3.5 5-.5z"/>' },
       { k:"cabang", t:"Cabang", ic:'<path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h1m4 0h1m-6 4h1m4 0h1m-6 4h1m4 0h1"/>' },
       { k:"log", t:"Log perubahan", ic:'<path d="M12 8v4l3 3M3 12a9 9 0 1018 0 9 9 0 00-18 0z"/>' },
     ];
@@ -681,6 +700,7 @@ function renderProdukList(){
     </div>
     <button class="btn btn-sm" id="btnUpdateHarga"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg> Update Harga</button>
     <button class="btn btn-sm" id="btnExportPdf"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg> Ekspor PDF</button>
+    <button class="btn btn-sm btn-primary" id="btnTambahProduk"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg> Tambah</button>
   </div>`;
 
   if (!list.length){
@@ -917,6 +937,8 @@ function pasangToolbar(){
   if (exp) exp.addEventListener("click", exportPdf);
   const upd = $("#btnUpdateHarga");
   if (upd) upd.addEventListener("click", updateSemuaHarga);
+  const tmb = $("#btnTambahProduk");
+  if (tmb) tmb.addEventListener("click", () => { editingProdukId = null; switchTab("add"); });
 }
 
 // Hitung ulang HPP semua produk (dan kondimen yang jadi bahannya) pakai
@@ -1995,17 +2017,26 @@ function switchTab(tab){
 let kelolaSub = "kategori";
 function renderKelola(){
   const v = $("#viewKelola");
+  const isKondimen = kelolaSub === "kondimen";
+  const ic = isKondimen
+    ? '<path d="M12 2l2 5 5 .5-4 3.5 1 5-4-2.5L8 19l1-5-4-3.5 5-.5z"/>'
+    : '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>';
+  const badge = isKondimen ? "Material" : "Pengaturan";
+  const judul = isKondimen ? "Kondimen" : "Pengaturan";
+  const sub = isKondimen
+    ? "Material setengah jadi (saus, marinasi, sambal) yang dihitung sekali, dipakai di banyak menu."
+    : "Atur kategori produk, cabang, dan lihat log perubahan.";
   v.innerHTML = `
     <div class="sub-hero">
       <div class="sub-hero-clip"><div class="sub-hero-grid"></div><div class="sub-hero-glow"></div></div>
       <div class="sub-hero-inner">
         <div class="sub-hero-ic">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">${ic}</svg>
         </div>
         <div>
-          <div class="sub-hero-badge"><span class="dot"></span> Pengaturan</div>
-          <h1 class="sub-hero-title">Kelola</h1>
-          <p class="sub-hero-sub">Atur kategori, material kondimen, cabang, dan lihat log perubahan.</p>
+          <div class="sub-hero-badge"><span class="dot"></span> ${badge}</div>
+          <h1 class="sub-hero-title">${judul}</h1>
+          <p class="sub-hero-sub">${sub}</p>
         </div>
       </div>
     </div>
