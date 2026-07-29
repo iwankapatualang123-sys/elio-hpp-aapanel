@@ -1979,7 +1979,10 @@ function renderKondimenEditor(body){
       </div>
     </div>
     <div class="card">
-      <h2>Bahan penyusun</h2>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <h2 style="margin:0;">Bahan penyusun</h2>
+        <button class="btn btn-sm" id="k-add-manual">+ Bahan manual</button>
+      </div>
       <div class="search-wrap">
         <div class="search-input">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
@@ -2000,6 +2003,7 @@ function renderKondimenEditor(body){
   $("#k-total").addEventListener("input", (ev) => { e.total_hasil = parseFloat(ev.target.value) || 0; refreshKondimenHpp(); });
   $("#k-satuan").addEventListener("input", (ev) => e.satuan_hasil = ev.target.value);
   $("#k-simpan").addEventListener("click", simpanKondimen);
+  $("#k-add-manual").addEventListener("click", () => bukaBahanManualModal("", "kondimen"));
 
   const cari = $("#k-cari"), hasil = $("#k-hasil");
   const sumberBahan = () => allBahan().filter(b => b.sumber !== "kondimen");
