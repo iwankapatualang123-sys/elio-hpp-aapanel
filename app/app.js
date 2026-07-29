@@ -2079,11 +2079,21 @@ function bahanCuriga(b){
   if (b.hargaBeli && b.isi && b.isi < 50 && b.hargaBeli > 20000) return true;
   return false;
 }
-function bahanSumberBadge(b){
+// Kategori sumber ternormalisasi -- dipakai badge DAN filter chip supaya
+// konsisten. Nilai asli dari Cashflow bahasa Inggris ("warehouse"), makanya
+// filter "gudang" dulu tidak cocok & tab Gudang kosong.
+function bahanKategoriSumber(b){
+  if (b.tipe === "manual") return "manual";
   const s = (b.sumber || "").toLowerCase();
-  if (s.includes("gudang") || s.includes("warehouse")) return `<span class="src src-gudang">Gudang</span>`;
-  if (s.includes("harian")) return `<span class="src src-harian">Harian</span>`;
-  if (b.tipe === "manual") return `<span class="src src-manual">Manual</span>`;
+  if (s.includes("gudang") || s.includes("warehouse")) return "gudang";
+  if (s.includes("harian")) return "harian";
+  return "lain";
+}
+function bahanSumberBadge(b){
+  const k = bahanKategoriSumber(b);
+  if (k === "gudang") return `<span class="src src-gudang">Gudang</span>`;
+  if (k === "harian") return `<span class="src src-harian">Harian</span>`;
+  if (k === "manual") return `<span class="src src-manual">Manual</span>`;
   return `<span class="src">${esc(b.sumber || "Acuan")}</span>`;
 }
 
@@ -2092,8 +2102,7 @@ function renderBahanView(){
   if (!v) return;
   let list = bahanCatalog();
   if (bahanCari) list = list.filter(b => b.nama.toLowerCase().includes(bahanCari.toLowerCase()));
-  if (bahanFilterSumber === "manual") list = list.filter(b => b.tipe === "manual");
-  else if (bahanFilterSumber) list = list.filter(b => (b.sumber || "").toLowerCase().includes(bahanFilterSumber));
+  if (bahanFilterSumber) list = list.filter(b => bahanKategoriSumber(b) === bahanFilterSumber);
   list.sort((a, b) => a.nama.localeCompare(b.nama));
   const curigaCount = bahanCatalog().filter(bahanCuriga).length;
 
