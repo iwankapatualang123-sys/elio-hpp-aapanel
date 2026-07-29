@@ -289,10 +289,10 @@
   .app-chrome .tab{ background:transparent; border-color:transparent; box-shadow:none; color:rgba(255,255,255,0.72); }
   .app-chrome .tab:hover{ background:rgba(255,255,255,0.12); }
   .app-chrome .tab.active{ background:rgba(255,255,255,0.18); color:#fff; box-shadow:none; }
-  /* #menuScreen: layar terpisah (bukan bagian dari tab-switching FNB),
-     hero-nya tetap digabung di sini apa adanya. */
-  #menuScreen .app-chrome header{ padding-top:0; border-top:none; margin:0 0 6px; }
-  #menuScreen .app-chrome .menu-hero{ background:transparent; box-shadow:none; border-radius:0; margin:0; padding:16px 2px 12px; }
+  /* #menuScreen: chrome = header saja (tanpa tabs, krn modul belum dipilih),
+     jadi header tidak butuh margin-bawah -- welcome hero (.menu-hero) sekarang
+     di konten bawah chrome, sama seperti stats/dash-hero di appScreen. */
+  #menuScreen .app-chrome header{ margin:0; }
   @media (max-width:640px){ .app-chrome{ padding:10px 16px; border-radius:16px; } }
 
   .empty{ text-align:center; padding:40px 20px; color:var(--ink-faint); font-size:14px; }
@@ -332,7 +332,7 @@
   .brow-flat{ display:flex; align-items:center; justify-content:space-between; gap:8px; padding:10px 0 4px; }
 
   /* MENU PILIHAN — FUTURISTIK */
-  .menu-hero{ position:relative; overflow:hidden; border-radius:16px; margin-top:20px; padding:38px 32px; background:linear-gradient(135deg,var(--green-dark),var(--green) 55%,#12603C); color:#fff; box-shadow:var(--shadow-md); }
+  .menu-hero{ position:relative; overflow:hidden; border-radius:16px; padding:38px 32px; background:linear-gradient(135deg,var(--green-dark),var(--green) 55%,#12603C); color:#fff; box-shadow:var(--shadow-md); }
   .menu-hero-grid{ position:absolute; inset:0; background-image:linear-gradient(rgba(255,255,255,0.06) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.06) 1px,transparent 1px); background-size:34px 34px; mask-image:radial-gradient(ellipse 80% 100% at 70% 0%,#000,transparent 75%); }
   .menu-hero-glow{ position:absolute; top:-80px; right:-40px; width:340px; height:340px; background:radial-gradient(circle,rgba(120,230,170,0.35),transparent 65%); filter:blur(10px); }
   .menu-hero-content{ position:relative; z-index:1; }
@@ -716,17 +716,19 @@
             <span class="avatar" id="userAvatarM">H</span>
             <span id="userEmailM">—</span>
           </div>
+          <button class="theme-toggle" id="themeToggleM" title="Mode gelap/terang" aria-label="Ganti tema"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"/></svg></button>
           <button class="btn btn-danger btn-sm" id="logoutBtnM">Keluar</button>
         </div>
       </header>
-      <div class="menu-hero">
-        <div class="menu-hero-grid"></div>
-        <div class="menu-hero-glow"></div>
-        <div class="menu-hero-content">
-          <div class="menu-hero-badge"><span class="dot"></span> Sistem Kalkulasi HPP</div>
-          <h1 class="menu-hero-title">Selamat datang di HPP Elio</h1>
-          <p class="menu-hero-sub">Pilih jenis usaha untuk mulai menghitung harga pokok &amp; harga jual.</p>
-        </div>
+    </div>
+
+    <div class="menu-hero">
+      <div class="menu-hero-grid"></div>
+      <div class="menu-hero-glow"></div>
+      <div class="menu-hero-content">
+        <div class="menu-hero-badge"><span class="dot"></span> Sistem Kalkulasi HPP</div>
+        <h1 class="menu-hero-title">Selamat datang di HPP Elio</h1>
+        <p class="menu-hero-sub">Pilih jenis usaha untuk mulai menghitung harga pokok &amp; harga jual.</p>
       </div>
     </div>
 
