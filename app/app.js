@@ -1092,7 +1092,9 @@ function addBahanByNormal(nn, qty){
 // tidak muncul (ketemu langsung waktu QA: browser tertentu mensupresi
 // prompt()/confirm()), fungsinya diam-diam berhenti tanpa pesan apa pun,
 // kelihatan seperti "tombolnya tidak berfungsi". Diganti form biasa di modal.
-function bukaBahanManualModal(prefill){
+let bahanManualTarget = "produk"; // "produk" (formBahan) | "kondimen" (kondimenEdit.bahan)
+function bukaBahanManualModal(prefill, target){
+  bahanManualTarget = target || "produk";
   let modal = $("#bahanManualModal");
   if (!modal){
     modal = document.createElement("div");
@@ -1157,7 +1159,8 @@ function updateBmmHasil(){
     ? `Harga per ${esc(satuan)}: <b>Rp ${hitungHargaManual().toFixed(2)}</b>`
     : `Isi harga & jumlah dulu buat lihat harga per ${esc(satuan)}`;
   const pakaiLabel = $("#bmm-pakai-label");
-  if (pakaiLabel) pakaiLabel.textContent = `Jumlah pemakaian di resep ini (${satuan})`;
+  const pakaiKonteks = bahanManualTarget === "kondimen" ? "di kondimen ini" : "di resep ini";
+  if (pakaiLabel) pakaiLabel.textContent = `Jumlah pemakaian ${pakaiKonteks} (${satuan})`;
 }
 async function simpanBahanManual(){
   const nama = $("#bmm-nama").value.trim();
@@ -1171,8 +1174,13 @@ async function simpanBahanManual(){
   if (error){ toast("Gagal simpan bahan manual"); return; }
   await loadManual();
   const nn = nama.toLowerCase().trim();
-  formBahan.push({ nama, nama_normal: nn, harga, sumber: "manual", konv: { isi: 1, unit: satuan }, qty: qtyPakai, override: null, hargaBeliOverride: null });
-  renderFormBahan(); recalc();
+  if (bahanManualTarget === "kondimen"){
+    kondimenEdit.bahan.push({ nama, nama_normal: nn, harga, sumber: "manual", konv: { isi: 1, unit: satuan }, qty: qtyPakai, override: null });
+    renderKondimenBahan(); refreshKondimenHpp();
+  } else {
+    formBahan.push({ nama, nama_normal: nn, harga, sumber: "manual", konv: { isi: 1, unit: satuan }, qty: qtyPakai, override: null, hargaBeliOverride: null });
+    renderFormBahan(); recalc();
+  }
   tutupBahanManualModal();
   toast("Bahan manual ditambahkan");
 }
@@ -1998,9 +2006,17 @@ function renderKondimenEditor(body){
   function show(q){
     const list = sumberBahan();
     const f = q ? list.filter(b => b.nama.toLowerCase().includes(q.toLowerCase())) : list;
-    hasil.innerHTML = f.slice(0, 10).map(b => `<div class="search-item" data-nn="${esc(b.nama_normal)}">${bahanInfoHtml(b)}</div>`).join("");
+    let html = f.slice(0, 10).map(b => `<div class="search-item" data-nn="${esc(b.nama_normal)}">${bahanInfoHtml(b)}</div>`).join("");
+    html += `<div class="search-item add-new" data-kadd="1"><span>+ Tidak ketemu? Tambah bahan manual</span></div>`;
+    hasil.innerHTML = html;
     hasil.classList.remove("hidden");
     $all(".search-item", hasil).forEach(it => it.addEventListener("click", () => {
+      if (it.dataset.kadd){
+        const q2 = cari.value.trim();
+        cari.value = ""; hasil.classList.add("hidden");
+        bukaBahanManualModal(q2, "kondimen");
+        return;
+      }
       const b = sumberBahan().find(x => x.nama_normal === it.dataset.nn);
       if (b && !e.bahan.some(x => x.nama_normal === b.nama_normal)){
         // konv:null (BUKAN default {isi:1,unit:"gr"}) kalau belum ada konversi —
