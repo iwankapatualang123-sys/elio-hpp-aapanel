@@ -1524,12 +1524,12 @@ function renderEditBahanBody(i){
     </div>
     ${!hbOver && tglInfo.lama ? `<div class="tgl-usang">Harga ${tglInfo.hari} hari lalu — mungkin sudah berubah</div>` : ""}
     <div class="drow">
-      <span class="drow-lbl">Isi per kemasan &amp; satuan</span>
+      <span class="drow-lbl">Isi per kemasan &amp; satuan <small>${rp(hb)} untuk berapa ${esc(unit)}?</small></span>
       <div class="drow-in"><input type="number" step="1" value="${isi}" data-act="isi"><select class="u-sel" data-act="unit">${satuanOptionsHtml(unit)}</select></div>
       <span style="width:22px;"></span>
     </div>
     <div class="drow">
-      <span class="drow-lbl">Harga per ${esc(unit)} <small>${prOver ? "diubah manual" : "otomatis"}</small></span>
+      <span class="drow-lbl">Harga per ${esc(unit)} <small>${prOver ? "diubah manual" : `otomatis · ${rp(hb)} ÷ ${isi}`}</small></span>
       <div class="drow-in ${prOver ? "" : "calc"}"><input type="number" step="0.01" value="${price.toFixed(2)}" data-act="perunit"><span class="u">/${esc(unit)}</span></div>
       <button class="drow-reset" data-act="reset-perunit" aria-label="Auto" ${prOver ? "" : "style=visibility:hidden"}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 4v6h6M23 20v-6h-6"/><path d="M3.5 9a9 9 0 0114.9-3.4L23 10M1 14l4.6 4.4A9 9 0 0020.5 15"/></svg></button>
     </div>
@@ -1538,26 +1538,41 @@ function renderEditBahanBody(i){
       <div class="drow-in"><input type="number" min="0" step="0.1" value="${b.qty}" data-act="qty"><span class="u">${esc(unit)}</span></div>
       <span style="width:22px;"></span>
     </div>
-    <button class="btn btn-sm btn-block" data-act="ubahsatuan" style="margin-top:4px;">Ubah satuan</button>
+    <button class="btn btn-primary btn-block" data-act="simpan-bahan" style="margin-top:8px;">Simpan</button>
   `;
   const qtyEl = bodyEl.querySelector('[data-act="qty"]');
   if (qtyEl) qtyEl.addEventListener("input", (e) => { formBahan[i].qty = parseFloat(e.target.value) || 0; recalc(); renderFormBahan(); autoDraft(); });
   const hbeliEl = bodyEl.querySelector('[data-act="hbeli"]');
   if (hbeliEl) hbeliEl.addEventListener("change", (e) => { formBahan[i].hargaBeliOverride = parseFloat(e.target.value) || 0; formBahan[i].override = null; renderEditBahanBody(i); renderFormBahan(); recalc(); autoDraft(); });
-  // isi & satuan disimpan lewat simpanKonversi -> persist ke material_konversi
-  // (diingat lintas produk & setelah reload), bukan cuma diubah lokal.
+  // Perubahan isi & satuan cuma di-preview dulu (lokal), DIPERSIST ke DB saat
+  // tombol Simpan ditekan -- bukan auto-save yg membingungkan.
   const isiEl = bodyEl.querySelector('[data-act="isi"]');
-  if (isiEl) isiEl.addEventListener("change", (e) => { const v = parseFloat(e.target.value); if (v > 0){ formBahan[i].override = null; simpanKonversi(formBahan[i], i, v, effUnit(formBahan[i])); } });
+  if (isiEl) isiEl.addEventListener("change", (e) => { const v = parseFloat(e.target.value); if (v > 0){ formBahan[i].konv = { isi: v, unit: effUnit(formBahan[i]) }; formBahan[i].override = null; renderEditBahanBody(i); renderFormBahan(); recalc(); } });
   const unitEl = bodyEl.querySelector('[data-act="unit"]');
-  if (unitEl) unitEl.addEventListener("change", (e) => { formBahan[i].override = null; simpanKonversi(formBahan[i], i, bahanIsi(formBahan[i]), e.target.value); });
+  if (unitEl) unitEl.addEventListener("change", (e) => { formBahan[i].konv = { isi: bahanIsi(formBahan[i]), unit: e.target.value }; formBahan[i].override = null; renderEditBahanBody(i); renderFormBahan(); recalc(); });
   const perunitEl = bodyEl.querySelector('[data-act="perunit"]');
   if (perunitEl) perunitEl.addEventListener("change", (e) => { formBahan[i].override = parseFloat(e.target.value) || 0; renderEditBahanBody(i); renderFormBahan(); recalc(); autoDraft(); });
   const resetHb = bodyEl.querySelector('[data-act="reset-hbeli"]');
   if (resetHb) resetHb.addEventListener("click", () => { formBahan[i].hargaBeliOverride = null; formBahan[i].override = null; renderEditBahanBody(i); renderFormBahan(); recalc(); autoDraft(); });
   const resetPu = bodyEl.querySelector('[data-act="reset-perunit"]');
   if (resetPu) resetPu.addEventListener("click", () => { formBahan[i].override = null; renderEditBahanBody(i); renderFormBahan(); recalc(); autoDraft(); });
-  const ubahBtn = bodyEl.querySelector('[data-act="ubahsatuan"]');
-  if (ubahBtn) ubahBtn.addEventListener("click", () => { formBahan[i].konv = null; formBahan[i].override = null; $("#editBahanModal").classList.add("hidden"); renderFormBahan(); recalc(); autoDraft(); });
+  const simpanBtn = bodyEl.querySelector('[data-act="simpan-bahan"]');
+  if (simpanBtn) simpanBtn.addEventListener("click", async () => {
+    const bb = formBahan[i];
+    if (!bb) return;
+    // Persist konversi (isi/satuan) ke material_konversi -> berlaku ke semua
+    // produk yg pakai bahan ini & tetap ada setelah reload. Bahan manual
+    // tidak punya baris material_konversi, cukup update lokal.
+    if (bb.konv && bb.sumber !== "manual"){
+      simpanBtn.disabled = true; simpanBtn.textContent = "Menyimpan…";
+      const { error } = await sb.from("material_konversi").upsert({ nama_normal: bb.nama_normal, nama: bb.nama, isi_per_kemasan: bb.konv.isi, satuan_pakai: bb.konv.unit }, { onConflict: "nama_normal" });
+      if (error){ toast("Gagal menyimpan satuan"); console.error(error); simpanBtn.disabled = false; simpanBtn.textContent = "Simpan"; return; }
+      konversiMap[bb.nama_normal] = { isi: bb.konv.isi, unit: bb.konv.unit };
+    }
+    $("#editBahanModal").classList.add("hidden");
+    renderFormBahan(); recalc(); autoDraft();
+    toast("Perubahan bahan disimpan");
+  });
 }
 
 // Opsi satuan pakai -- dipakai SEMUA dropdown satuan (edit bahan, lengkapi
