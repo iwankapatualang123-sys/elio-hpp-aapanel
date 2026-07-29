@@ -135,7 +135,11 @@
   .search-input:focus-within{ border-color:var(--green); background:var(--surface); box-shadow:0 0 0 3px var(--green-ring); }
   .search-input svg{ width:17px; height:17px; color:var(--ink-faint); flex-shrink:0; }
   .search-input input{ border:0; outline:0; background:transparent; width:100%; font-size:14px; color:var(--ink); }
-  .search-results{ position:absolute; top:calc(100% + 4px); left:0; right:0; background:var(--surface); border:1px solid var(--line); border-radius:12px; box-shadow:var(--shadow-md); max-height:240px; overflow-y:auto; z-index:20; }
+  /* max-height dulu 240px, pas buat baris satu-baris lama. Baris sekarang
+     dua baris (nama+badge, lalu harga+tanggal) jadi cuma kelihatan ~1.5
+     baris sebelum terpotong pas dropdown baru kebuka — kelihatan rusak,
+     bukan cuma "scroll buat lihat lebih". 380px muat ~5-6 baris penuh. */
+  .search-results{ position:absolute; top:calc(100% + 4px); left:0; right:0; background:var(--surface); border:1px solid var(--line); border-radius:12px; box-shadow:var(--shadow-md); max-height:380px; overflow-y:auto; z-index:20; }
   .search-item{ padding:9px 14px; font-size:13px; cursor:pointer; border-bottom:1px solid var(--line); }
   .search-item:last-child{ border-bottom:0; }
   .search-item:hover{ background:var(--green-light); }
