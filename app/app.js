@@ -1978,7 +1978,7 @@ function renderKondimenEditor(body){
         <div class="field"><label>Satuan</label><input type="text" id="k-satuan" value="${esc(e.satuan_hasil)}" placeholder="gr / ml"></div>
       </div>
     </div>
-    <div class="card">
+    <div class="card" style="position:relative;z-index:5;">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
         <h2 style="margin:0;">Bahan penyusun</h2>
         <button class="btn btn-sm" id="k-add-manual">+ Bahan manual</button>
