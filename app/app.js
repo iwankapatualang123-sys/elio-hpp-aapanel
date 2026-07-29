@@ -365,7 +365,7 @@ function bahanInfoHtml(b){
     <div class="si-info">${infoHarga}${tglHtml}</div>`;
 }
 
-let bahanModalSelected = new Set();
+let bahanModalSelected = new Map(); // nama_normal -> qty pakai
 let bahanModalQuery = "";
 
 function bukaBahanModal(){
@@ -393,10 +393,10 @@ function bukaBahanModal(){
     modal.querySelector("#bmClose").addEventListener("click", tutupBahanModal);
     modal.querySelector("#bmCari").addEventListener("input", (e) => { bahanModalQuery = e.target.value; renderBahanModalList(); });
     modal.querySelector("#bmTambahManual").addEventListener("click", () => { const q = bahanModalQuery.trim(); tutupBahanModal(); bukaBahanManualModal(q); });
-    modal.querySelector("#bmKelolaKondimen").addEventListener("click", () => { tutupBahanModal(); kelolaSub = "kondimen"; switchTab("kelola"); });
+    modal.querySelector("#bmKelolaKondimen").addEventListener("click", () => { tutupBahanModal(); bukaKondimenQuickModal(); });
     modal.querySelector("#bmTambah").addEventListener("click", konfirmasiBahanModal);
   }
-  bahanModalSelected = new Set();
+  bahanModalSelected = new Map();
   bahanModalQuery = "";
   modal.querySelector("#bmCari").value = "";
   renderBahanModalList();
@@ -420,18 +420,35 @@ function renderBahanModalList(){
     const cocokTapiSudahAda = allBahan().some(b => (!q || b.nama.toLowerCase().includes(q)) && sudahAda.has(b.nama_normal));
     listEl.innerHTML = `<div class="empty" style="padding:24px;font-size:13px;">${cocokTapiSudahAda ? "Bahan yang cocok sudah semua ditambahkan." : "Tidak ada bahan cocok."}</div>`;
   } else {
-    listEl.innerHTML = list.map(b => `<label class="bm-row ${bahanModalSelected.has(b.nama_normal) ? "checked" : ""}" data-nn="${esc(b.nama_normal)}">
-      <input type="checkbox" ${bahanModalSelected.has(b.nama_normal) ? "checked" : ""}>
+    listEl.innerHTML = list.map(b => {
+      const checked = bahanModalSelected.has(b.nama_normal);
+      const qty = checked ? bahanModalSelected.get(b.nama_normal) : "";
+      const unit = b.konv ? b.konv.unit : "";
+      return `<label class="bm-row ${checked ? "checked" : ""}" data-nn="${esc(b.nama_normal)}">
+      <input type="checkbox" ${checked ? "checked" : ""}>
       <div class="bm-row-body">${bahanInfoHtml(b)}</div>
-    </label>`).join("");
-    $all(".bm-row", listEl).forEach(row => row.addEventListener("click", (e) => {
-      e.preventDefault();
+      <div class="bm-qty-wrap"><input type="number" class="bm-qty" min="0" step="0.01" placeholder="qty" value="${qty || ""}">${unit ? `<span class="bm-qty-unit">${esc(unit)}</span>` : ""}</div>
+    </label>`;
+    }).join("");
+    $all(".bm-row", listEl).forEach(row => {
       const nn = row.dataset.nn;
-      if (bahanModalSelected.has(nn)) bahanModalSelected.delete(nn); else bahanModalSelected.add(nn);
-      row.classList.toggle("checked");
-      row.querySelector("input").checked = bahanModalSelected.has(nn);
-      updateBmFooter();
-    }));
+      const qtyInput = row.querySelector(".bm-qty");
+      row.addEventListener("click", (e) => {
+        if (e.target === qtyInput) return; // biar bisa klik & ketik di kolom qty tanpa toggle checkbox
+        e.preventDefault();
+        const akanChecked = !bahanModalSelected.has(nn);
+        if (akanChecked) bahanModalSelected.set(nn, parseFloat(qtyInput.value) || 0);
+        else bahanModalSelected.delete(nn);
+        row.classList.toggle("checked", akanChecked);
+        row.querySelector("input[type=checkbox]").checked = akanChecked;
+        updateBmFooter();
+        if (akanChecked) setTimeout(() => qtyInput.focus(), 30);
+      });
+      qtyInput.addEventListener("input", () => {
+        if (bahanModalSelected.has(nn)) bahanModalSelected.set(nn, parseFloat(qtyInput.value) || 0);
+      });
+      qtyInput.addEventListener("click", (e) => e.stopPropagation());
+    });
   }
   updateBmFooter();
 }
@@ -442,7 +459,7 @@ function updateBmFooter(){
 }
 function konfirmasiBahanModal(){
   const n = bahanModalSelected.size;
-  bahanModalSelected.forEach(nn => addBahanByNormal(nn));
+  bahanModalSelected.forEach((qty, nn) => addBahanByNormal(nn, qty));
   tutupBahanModal();
   if (n) toast(n === 1 ? "1 bahan ditambahkan" : `${n} bahan ditambahkan`);
 }
@@ -1063,11 +1080,11 @@ function renderKatTingkat(){
   });
 }
 
-function addBahanByNormal(nn){
+function addBahanByNormal(nn, qty){
   const b = allBahan().find(x => x.nama_normal === nn);
   if (!b) return;
   if (formBahan.some(x => x.nama_normal === nn)){ toast("Bahan sudah ditambahkan"); return; }
-  formBahan.push({ nama: b.nama, nama_normal: b.nama_normal, harga: b.harga, sumber: b.sumber, tanggal: b.tanggal || null, konv: b.konv ? { ...b.konv } : null, qty: 0, override: null, hargaBeliOverride: null });
+  formBahan.push({ nama: b.nama, nama_normal: b.nama_normal, harga: b.harga, sumber: b.sumber, tanggal: b.tanggal || null, konv: b.konv ? { ...b.konv } : null, qty: qty || 0, override: null, hargaBeliOverride: null });
   renderFormBahan(); recalc();
 }
 
@@ -1823,6 +1840,47 @@ async function hapusKategori(id){
 
 // ===== KONDIMEN =====
 let kondimenEdit = null;
+// true kalau editor kondimen sedang dirender di dalam popup (dipanggil dari
+// tombol "★ Kelola Kondimen" di popup pilih-bahan Tambah Produk), bukan di
+// halaman Kelola biasa — dipakai renderKondimenEditor()/simpanKondimen() buat
+// tahu harus balik ke mana setelah selesai. Lihat bukaKondimenQuickModal().
+let kondimenQuickMode = false;
+
+function bukaKondimenQuickModal(){
+  let modal = $("#kondimenQuickModal");
+  if (!modal){
+    modal = document.createElement("div");
+    modal.id = "kondimenQuickModal";
+    modal.className = "dash-modal hidden";
+    modal.innerHTML = `<div class="dm-backdrop"></div>
+      <div class="dm-panel" style="max-width:480px;">
+        <div class="dm-head"><h3>★ Kondimen Baru</h3><button class="icon-btn" id="kqmClose" aria-label="Tutup"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
+        <div class="dm-body" id="kqmBody"></div>
+      </div>`;
+    document.body.appendChild(modal);
+    modal.querySelector(".dm-backdrop").addEventListener("click", tutupKondimenQuickModal);
+    modal.querySelector("#kqmClose").addEventListener("click", tutupKondimenQuickModal);
+  }
+  kondimenQuickMode = true;
+  kondimenEdit = { nama: "", satuan_hasil: "gr", total_hasil: 1000, bahan: [] };
+  // renderKondimenEditor() pakai id global (#k-nama dkk) bukan discope ke body
+  // parameter-nya — kosongkan #kelola-body dulu supaya tidak ada id bentrok
+  // kalau kebetulan masih ada sisa render dari kunjungan sebelumnya ke tab Kelola.
+  const kelolaBody = $("#kelola-body");
+  if (kelolaBody) kelolaBody.innerHTML = "";
+  renderKondimenEditor($("#kqmBody"));
+  modal.classList.remove("hidden");
+  requestAnimationFrame(() => modal.classList.add("show"));
+}
+function tutupKondimenQuickModal(){
+  const modal = $("#kondimenQuickModal");
+  if (modal){
+    modal.classList.remove("show");
+    setTimeout(() => modal.classList.add("hidden"), 200);
+  }
+  kondimenQuickMode = false;
+  kondimenEdit = null;
+}
 
 function renderKelolaKondimen(){
   const body = $("#kelola-body");
@@ -1915,7 +1973,7 @@ function renderKondimenEditor(body){
       <button class="btn btn-primary btn-block" id="k-simpan">Simpan Kondimen</button>
     </div>`;
 
-  $("#k-back").addEventListener("click", () => { kondimenEdit = null; renderKelolaKondimen(); });
+  $("#k-back").addEventListener("click", () => { if (kondimenQuickMode) tutupKondimenQuickModal(); else { kondimenEdit = null; renderKelolaKondimen(); } });
   $("#k-nama").addEventListener("input", (ev) => e.nama = ev.target.value);
   $("#k-total").addEventListener("input", (ev) => { e.total_hasil = parseFloat(ev.target.value) || 0; refreshKondimenHpp(); });
   $("#k-satuan").addEventListener("input", (ev) => e.satuan_hasil = ev.target.value);
@@ -2000,9 +2058,17 @@ async function simpanKondimen(){
   }));
   if (bahanRows.length) await sb.from("kondimen_bahan").insert(bahanRows);
   await loadKondimen();
-  kondimenEdit = null;
-  renderKelolaKondimen();
-  toast("Kondimen disimpan");
+  if (kondimenQuickMode){
+    // dibuat dari popup pilih-bahan Tambah Produk — langsung pakai kondimen
+    // baru ini di resep yang sedang dikerjakan, bukan balik ke halaman Kelola.
+    tutupKondimenQuickModal();
+    addBahanByNormal("kondimen:" + kid);
+    toast("Kondimen disimpan & ditambahkan ke resep");
+  } else {
+    kondimenEdit = null;
+    renderKelolaKondimen();
+    toast("Kondimen disimpan");
+  }
 }
 
 function renderKelolaCabang(){
