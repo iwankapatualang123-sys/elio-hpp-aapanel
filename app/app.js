@@ -1931,7 +1931,12 @@ async function bukaKondimen(id){
         nama: b.bahan_nama || (found ? found.nama : b.bahan_nama_normal),
         nama_normal: b.bahan_nama_normal, sumber: b.sumber_bahan,
         harga: found ? found.harga : 0,
-        konv: b.isi_kemasan ? { isi: Number(b.isi_kemasan), unit: b.satuan || "gr" } : (found && found.konv ? found.konv : { isi: 1, unit: b.satuan || "gr" }),
+        // Sama seperti di show()/renderKondimenBahan(): jangan default ke
+        // {isi:1,...} kalau memang belum ada konversi tersimpan atau
+        // ke-detect dari bahan acuan saat ini — biarkan null supaya
+        // renderKondimenBahan() menampilkan "Lengkapi satuan", bukan diam-diam
+        // salah hitung.
+        konv: b.isi_kemasan ? { isi: Number(b.isi_kemasan), unit: b.satuan || "gr" } : (found && found.konv ? found.konv : null),
         qty: Number(b.qty_pakai) || 0, override: b.harga_override,
       };
     }),
@@ -1942,7 +1947,11 @@ async function bukaKondimen(id){
 function hitungKondimenHpp(){
   let total = 0;
   kondimenEdit.bahan.forEach(b => {
-    const perUnit = (b.override != null) ? b.override : (b.konv ? b.harga / (b.konv.isi || 1) : b.harga);
+    // b.konv null = belum lengkap satuannya -> jangan ikut dihitung sama
+    // sekali (dulu diam-diam pakai b.harga mentah, sama bug-nya seperti di
+    // renderKondimenBahan: harga per kemasan besar kehitung seolah per gram).
+    if (!b.konv) return;
+    const perUnit = (b.override != null) ? b.override : b.harga / (b.konv.isi || 1);
     total += perUnit * (b.qty || 0);
   });
   const per = kondimenEdit.total_hasil > 0 ? total / kondimenEdit.total_hasil : 0;
@@ -1994,7 +2003,12 @@ function renderKondimenEditor(body){
     $all(".search-item", hasil).forEach(it => it.addEventListener("click", () => {
       const b = sumberBahan().find(x => x.nama_normal === it.dataset.nn);
       if (b && !e.bahan.some(x => x.nama_normal === b.nama_normal)){
-        e.bahan.push({ nama: b.nama, nama_normal: b.nama_normal, harga: b.harga, sumber: b.sumber, konv: b.konv ? {...b.konv} : { isi:1, unit:"gr" }, qty: 0, override: null });
+        // konv:null (BUKAN default {isi:1,unit:"gr"}) kalau belum ada konversi —
+        // defaultnya lama diam-diam menganggap "isi 1 gram", jadi bahan yang
+        // dijual per kemasan besar (mis. beras 25kg) keitung harganya per gram
+        // padahal itu masih harga per karung. renderKondimenBahan() di bawah
+        // yang menampilkan peringatan "Lengkapi satuan" kalau konv null.
+        e.bahan.push({ nama: b.nama, nama_normal: b.nama_normal, harga: b.harga, sumber: b.sumber, konv: b.konv ? {...b.konv} : null, qty: 0, override: null });
         renderKondimenBahan(); refreshKondimenHpp();
       }
       cari.value = ""; hasil.classList.add("hidden");
@@ -2012,8 +2026,34 @@ function renderKondimenBahan(){
   const e = kondimenEdit;
   if (!e.bahan.length){ el.innerHTML = '<div class="empty" style="padding:14px;font-size:13px;">Belum ada bahan.</div>'; return; }
   el.innerHTML = e.bahan.map((b, i) => {
-    const unit = b.konv ? b.konv.unit : "gr";
-    const perUnit = (b.override != null) ? b.override : (b.konv ? b.harga / (b.konv.isi || 1) : b.harga);
+    if (!b.konv){
+      // Belum ada konversi — JANGAN hitung apa pun (dulu diam-diam dianggap
+      // "isi 1 gram", bikin bahan yang dijual per kemasan besar seperti
+      // beras 25kg keitung harganya per gram, bukan per karung).
+      const det = deteksiSatuan(b.nama);
+      return `<div class="bahan-row" style="padding:10px 12px;" data-i="${i}">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span class="brow-nm">${esc(b.nama)}</span>
+          <button class="icon-btn" data-krm="${i}" aria-label="Hapus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+        </div>
+        <div class="brow-warn" style="padding:8px 0 0;">
+          <span class="txt"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h16.9a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg> Lengkapi satuan dulu — harga sekarang per kemasan, bukan per ${det ? esc(det.unit) : "gr/ml"}</span>
+        </div>
+        <div class="setup-hint ${det ? "detected" : ""}" style="margin-top:6px;">${det ? "Terdeteksi dari nama: " + det.isi + " " + det.unit + " per kemasan — koreksi bila perlu" : "Kalau dibeli & dipakai per pcs yang sama, klik tombol hijau. Kalau dibeli per kemasan lalu dipakai per gram/ml, isi konversinya."}</div>
+        <button class="btn btn-sm btn-primary" data-kperpcs="${i}" style="width:100%;margin:6px 0;">Pakai per pcs (sama dengan satuan beli)</button>
+        <div class="setup-box">
+          <input type="number" placeholder="isi per kemasan" value="${det ? det.isi : ""}" data-kisi="${i}">
+          <select data-kunit="${i}">
+            <option value="gr" ${det && det.unit === "gr" ? "selected" : ""}>gr</option>
+            <option value="ml" ${det && det.unit === "ml" ? "selected" : ""}>ml</option>
+            <option value="pcs" ${det && det.unit === "pcs" ? "selected" : ""}>pcs</option>
+          </select>
+          <button class="btn btn-sm btn-primary" data-ksavesat="${i}">Simpan</button>
+        </div>
+      </div>`;
+    }
+    const unit = b.konv.unit;
+    const perUnit = (b.override != null) ? b.override : b.harga / (b.konv.isi || 1);
     const sub = perUnit * (b.qty || 0);
     return `<div class="bahan-row" style="padding:10px 12px;">
       <div style="display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center;">
@@ -2022,13 +2062,34 @@ function renderKondimenBahan(){
         <span class="brow-sub">${rp(sub)}</span>
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;">
-        <span style="font-size:11px;color:var(--ink-faint);">${perUnit.toFixed(2)}/${esc(unit)}${b.konv && b.konv.isi > 1 ? ` · isi ${b.konv.isi}` : ""}</span>
+        <span style="font-size:11px;color:var(--ink-faint);">${perUnit.toFixed(2)}/${esc(unit)}${b.konv.isi > 1 ? ` · isi ${b.konv.isi}` : ""}</span>
         <button class="icon-btn" data-krm="${i}" aria-label="Hapus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
       </div>
     </div>`;
   }).join("");
   $all("[data-kq]", el).forEach(inp => inp.addEventListener("input", (ev) => { e.bahan[+ev.target.dataset.kq].qty = parseFloat(ev.target.value) || 0; renderKondimenBahan(); refreshKondimenHpp(); }));
   $all("[data-krm]", el).forEach(b => b.addEventListener("click", () => { e.bahan.splice(+b.dataset.krm, 1); renderKondimenBahan(); refreshKondimenHpp(); }));
+  $all("[data-kperpcs]", el).forEach(b => b.addEventListener("click", () => simpanKonversiKondimen(+b.dataset.kperpcs, 1, "pcs")));
+  $all("[data-ksavesat]", el).forEach(b => b.addEventListener("click", () => {
+    const i = +b.dataset.ksavesat;
+    const isi = parseFloat($(`[data-kisi="${i}"]`, el).value);
+    const unit = $(`[data-kunit="${i}"]`, el).value;
+    simpanKonversiKondimen(i, isi, unit);
+  }));
+}
+// Sama persis pola simpanKonversi() punya form produk (upsert ke
+// material_konversi yang dipakai bersama semua layar) — cuma disasar ke
+// kondimenEdit.bahan[i]/renderKondimenBahan() alih-alih formBahan.
+async function simpanKonversiKondimen(i, isi, unit){
+  if (!(isi > 0)){ toast("Isi per kemasan harus lebih dari 0"); return; }
+  const b = kondimenEdit.bahan[i];
+  if (b.sumber !== "manual"){
+    await sb.from("material_konversi").upsert({ nama_normal: b.nama_normal, nama: b.nama, isi_per_kemasan: isi, satuan_pakai: unit }, { onConflict: "nama_normal" });
+    konversiMap[b.nama_normal] = { isi, unit };
+  }
+  kondimenEdit.bahan[i].konv = { isi, unit };
+  renderKondimenBahan(); refreshKondimenHpp();
+  toast("Satuan dilengkapi");
 }
 
 function refreshKondimenHpp(){
@@ -2041,6 +2102,7 @@ async function simpanKondimen(){
   const e = kondimenEdit;
   if (!e.nama.trim()){ toast("Nama kondimen wajib diisi"); return; }
   if (!e.bahan.length){ toast("Tambahkan minimal satu bahan"); return; }
+  if (e.bahan.some(b => !b.konv)){ toast("Ada bahan yang satuannya belum dilengkapi — HPP tidak akan akurat"); return; }
   const calc = hitungKondimenHpp();
   const row = {
     nama: e.nama.trim(), satuan_hasil: e.satuan_hasil || "gr", total_hasil: e.total_hasil || 1,
