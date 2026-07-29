@@ -1086,8 +1086,12 @@ function bukaBahanManualModal(prefill){
         <div class="dm-head"><h3>Tambah Bahan Manual</h3><button class="icon-btn" id="bmmClose" aria-label="Tutup"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
         <div class="dm-body">
           <div class="field"><label>Nama bahan</label><input type="text" id="bmm-nama" placeholder="mis. Micin 500gram"></div>
-          <div class="field"><label>Harga per satuan (Rp)</label><input type="number" id="bmm-harga" min="0" step="1" placeholder="0"></div>
-          <div class="field"><label>Satuan</label><select id="bmm-satuan"><option value="gr">gr</option><option value="ml">ml</option><option value="pcs">pcs</option></select></div>
+          <div class="field"><label>Harga pembelian (Rp)</label><input type="number" id="bmm-hargabeli" min="0" step="1" placeholder="mis. 15000"></div>
+          <div class="field-row">
+            <div class="field"><label>Jumlah didapat</label><input type="number" id="bmm-jumlah" min="0" step="0.01" placeholder="mis. 500"></div>
+            <div class="field"><label>Satuan</label><select id="bmm-satuan"><option value="gr">gr</option><option value="ml">ml</option><option value="pcs">pcs</option></select></div>
+          </div>
+          <div class="bmm-hasil" id="bmm-hasil"></div>
         </div>
         <div class="bm-foot"><span></span><button class="btn btn-primary btn-sm" id="bmmSimpan">Simpan</button></div>
       </div>`;
@@ -1096,10 +1100,16 @@ function bukaBahanManualModal(prefill){
     modal.querySelector("#bmmClose").addEventListener("click", tutupBahanManualModal);
     modal.querySelector("#bmmSimpan").addEventListener("click", simpanBahanManual);
     modal.querySelector("#bmm-nama").addEventListener("keydown", (e) => { if (e.key === "Enter") simpanBahanManual(); });
+    ["#bmm-hargabeli", "#bmm-jumlah", "#bmm-satuan"].forEach(sel => {
+      modal.querySelector(sel).addEventListener("input", updateBmmHasil);
+      modal.querySelector(sel).addEventListener("change", updateBmmHasil);
+    });
   }
   modal.querySelector("#bmm-nama").value = prefill || "";
-  modal.querySelector("#bmm-harga").value = "";
+  modal.querySelector("#bmm-hargabeli").value = "";
+  modal.querySelector("#bmm-jumlah").value = "";
   modal.querySelector("#bmm-satuan").value = "gr";
+  updateBmmHasil();
   modal.classList.remove("hidden");
   requestAnimationFrame(() => modal.classList.add("show"));
   setTimeout(() => modal.querySelector("#bmm-nama").focus(), 60);
@@ -1110,12 +1120,31 @@ function tutupBahanManualModal(){
   modal.classList.remove("show");
   setTimeout(() => modal.classList.add("hidden"), 200);
 }
+// Konversi harga beli -> harga per satuan pakai kecil, sama seperti alur
+// "Lengkapi satuan" buat bahan acuan — supaya orang tidak perlu bagi manual
+// harga per kemasan / isi kemasan sendiri di kepala.
+function hitungHargaManual(){
+  const hargaBeli = parseFloat($("#bmm-hargabeli").value) || 0;
+  const jumlah = parseFloat($("#bmm-jumlah").value) || 0;
+  return jumlah > 0 ? hargaBeli / jumlah : 0;
+}
+function updateBmmHasil(){
+  const hasilEl = $("#bmm-hasil");
+  if (!hasilEl) return;
+  const jumlah = parseFloat($("#bmm-jumlah").value) || 0;
+  const satuan = $("#bmm-satuan").value;
+  hasilEl.classList.toggle("filled", jumlah > 0);
+  hasilEl.innerHTML = jumlah > 0
+    ? `Harga per ${esc(satuan)}: <b>Rp ${hitungHargaManual().toFixed(2)}</b>`
+    : `Isi harga & jumlah dulu buat lihat harga per ${esc(satuan)}`;
+}
 async function simpanBahanManual(){
   const nama = $("#bmm-nama").value.trim();
-  const harga = parseFloat($("#bmm-harga").value);
+  const jumlah = parseFloat($("#bmm-jumlah").value) || 0;
   const satuan = $("#bmm-satuan").value;
+  const harga = hitungHargaManual();
   if (!nama){ toast("Nama bahan wajib diisi"); return; }
-  if (isNaN(harga) || harga < 0){ toast("Harga tidak valid"); return; }
+  if (jumlah <= 0){ toast("Jumlah didapat harus lebih dari 0"); return; }
   const { error } = await sb.from("material_manual").insert({ nama, harga_per_satuan: harga, satuan });
   if (error){ toast("Gagal simpan bahan manual"); return; }
   await loadManual();
