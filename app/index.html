@@ -283,7 +283,7 @@
     margin-bottom:16px;
   }
   [data-theme="dark"] .app-chrome{ background:linear-gradient(135deg, color-mix(in srgb, var(--green-dark) 72%, transparent), color-mix(in srgb, #0A3D26 66%, transparent)); }
-  .app-chrome header{ margin:0 0 10px; }
+  .app-chrome header{ margin:0; }
   .app-chrome .brand .name{ color:#fff; }
   .app-chrome .brand .sub{ color:rgba(255,255,255,0.72); }
   .app-chrome .brand .btn-ghost{ color:#fff; }
@@ -292,14 +292,6 @@
   .app-chrome .theme-toggle:hover{ background:rgba(255,255,255,0.24); }
   .app-chrome .btn-danger{ background:rgba(255,255,255,0.14); border-color:rgba(255,255,255,0.24); color:#fff; box-shadow:none; }
   .app-chrome .btn-danger:hover{ background:rgba(255,255,255,0.24); }
-  .app-chrome .tabs{ margin:0; }
-  .app-chrome .tab{ background:transparent; border-color:transparent; box-shadow:none; color:rgba(255,255,255,0.72); }
-  .app-chrome .tab:hover{ background:rgba(255,255,255,0.12); }
-  .app-chrome .tab.active{ background:rgba(255,255,255,0.18); color:#fff; box-shadow:none; }
-  /* #menuScreen: chrome = header saja (tanpa tabs, krn modul belum dipilih),
-     jadi header tidak butuh margin-bawah -- welcome hero (.menu-hero) sekarang
-     di konten bawah chrome, sama seperti stats/dash-hero di appScreen. */
-  #menuScreen .app-chrome header{ margin:0; }
   @media (max-width:640px){ .app-chrome{ padding:10px 16px; border-radius:16px; } }
 
   .empty{ text-align:center; padding:40px 20px; color:var(--ink-faint); font-size:14px; }
@@ -477,16 +469,20 @@
     #appScreen .wrap.wide{ flex:1; min-height:0; display:flex; flex-direction:column; padding-bottom:20px; }
     .app-chrome{ flex-shrink:0; }
     #fnbSection{ flex:1; min-height:0; display:flex; flex-direction:column; }
-    #viewDash{ flex:1; min-height:0; overflow-y:auto; }
     #fnbSection .app-layout{ flex:1; min-height:0; align-items:stretch; }
     .app-sidebar{ position:static; height:100%; overflow-y:auto; }
     .app-content{ height:100%; display:flex; flex-direction:column; overflow:hidden; }
+    /* semua view isi kolom konten -- yang aktif ngisi sisa tinggi & scroll sendiri */
+    #viewDash{ flex:1; min-height:0; overflow-y:auto; }
     #viewList{ flex:1; min-height:0; display:flex; flex-direction:column; overflow:hidden; }
     #prodHero{ flex-shrink:0; }
     #prodListTop{ flex-shrink:0; }
     #prodList{ flex:1; min-height:0; overflow-y:auto; }
     #viewAdd, #viewKelola{ flex:1; min-height:0; overflow-y:auto; }
   }
+  /* Menu navigasi utama di atas sidebar (Dashboard/Produk/Tambah/Kelola) */
+  .side-nav{ display:flex; flex-direction:column; gap:3px; }
+  .side-sep{ height:1px; background:var(--line); margin:10px 4px; }
   .side-title{ font-size:11px; font-weight:700; color:var(--ink-faint); text-transform:uppercase; letter-spacing:0.04em; padding:6px 8px 8px; }
   .cat-item{ display:flex; align-items:center; gap:8px; padding:9px 10px; border-radius:8px; font-size:14px; cursor:pointer; transition:all .12s; color:var(--ink); }
   .cat-item:hover{ background:var(--panel); }
@@ -510,6 +506,8 @@
     .app-sidebar{ position:static; padding:8px; }
     .side-title{ display:none; }
     .cat-tree{ display:none; }
+    .side-nav{ flex-direction:row; gap:6px; overflow-x:auto; }
+    .side-sep{ display:none; }
     .side-menu{ display:flex; gap:6px; overflow-x:auto; }
     .side-menu-item{ white-space:nowrap; }
     .side-dropdown{ display:block; }
@@ -786,21 +784,13 @@
           <button class="btn btn-danger btn-sm" id="logoutBtn">Keluar</button>
         </div>
       </header>
-
-      <div class="tabs">
-        <div class="tab" data-tab="dash" id="tabDash"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>Dashboard</div>
-        <div class="tab active" data-tab="list" id="tabList"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h18"/></svg>Produk</div>
-        <div class="tab" data-tab="add" id="tabAdd"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>Tambah</div>
-        <div class="tab" data-tab="kelola" id="tabKelola"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>Kelola</div>
-      </div>
     </div>
 
     <div id="fnbSection">
-      <div id="viewDash" class="hidden"></div>
-
       <div class="app-layout">
         <aside class="app-sidebar" id="appSidebar"></aside>
         <main class="app-content">
+          <div id="viewDash" class="hidden"></div>
           <div id="viewList">
             <div id="prodHero"></div>
             <div id="prodListTop"></div>

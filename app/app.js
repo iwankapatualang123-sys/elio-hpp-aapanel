@@ -476,17 +476,62 @@ let dashCabang = "";       // filter cabang khusus dashboard
 let cariProduk = "";
 let currentTab = "list";
 
+// Menu navigasi utama -- dulu tab di top bar, sekarang pindah ke ATAS sidebar
+// (sama di semua tab, bikin sidebar konsisten & top bar cukup jadi 1 area
+// header logo+aksi saja). data-nav dibinding via bindNav().
+const NAV_ITEMS = [
+  { k:"dash", t:"Dashboard", ic:'<rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/>' },
+  { k:"list", t:"Produk", ic:'<path d="M3 6h18M3 12h18M3 18h18"/>' },
+  { k:"add", t:"Tambah", ic:'<path d="M12 5v14M5 12h14"/>' },
+  { k:"kelola", t:"Kelola", ic:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>' },
+];
+function navMenuHtml(){
+  return `<div class="side-nav">` + NAV_ITEMS.map(m =>
+    `<div class="side-menu-item ${currentTab===m.k?"active":""}" data-nav="${m.k}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${m.ic}</svg>${m.t}</div>`
+  ).join("") + `</div>`;
+}
+function bindNav(el){
+  $all("[data-nav]", el).forEach(it => it.addEventListener("click", () => {
+    const t = it.dataset.nav;
+    if (t === "add") editingProdukId = null;
+    switchTab(t);
+  }));
+}
+
 function renderSidebar(){
   const el = $("#appSidebar");
   if (!el) return;
-  if (currentTab === "kelola"){ renderKelolaSidebar(el); return; }
-  // Produk & Tambah: pohon kategori (di bawah FNB)
+  const nav = navMenuHtml();
+
+  // Kelola: nav + menu pengaturan
+  if (currentTab === "kelola"){
+    const menu = [
+      { k:"kategori", t:"Kategori", ic:'<path d="M3 7h18M3 12h18M3 17h18"/>' },
+      { k:"kondimen", t:"Material Kondimen", ic:'<path d="M12 2l2 5 5 .5-4 3.5 1 5-4-2.5L8 19l1-5-4-3.5 5-.5z"/>' },
+      { k:"cabang", t:"Cabang", ic:'<path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h1m4 0h1m-6 4h1m4 0h1m-6 4h1m4 0h1"/>' },
+      { k:"log", t:"Log perubahan", ic:'<path d="M12 8v4l3 3M3 12a9 9 0 1018 0 9 9 0 00-18 0z"/>' },
+    ];
+    el.innerHTML = nav + `<div class="side-sep"></div><div class="side-title">Pengaturan</div><div class="side-menu">` +
+      menu.map(m => `<div class="side-menu-item ${kelolaSub===m.k?"active":""}" data-sub="${m.k}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${m.ic}</svg>${m.t}</div>`).join("") + `</div>`;
+    bindNav(el);
+    $all("[data-sub]", el).forEach(t => t.addEventListener("click", () => { kelolaSub = t.dataset.sub; renderSidebar(); renderKelolaBody(); }));
+    return;
+  }
+
+  // Dashboard: cukup nav (tidak ada daftar kategori/pengaturan)
+  if (currentTab === "dash"){
+    el.innerHTML = nav;
+    bindNav(el);
+    return;
+  }
+
+  // Produk & Tambah: nav + pohon kategori (di bawah FNB)
   const rootId = katRootFnb();
   const lvl2 = katChildren(rootId);
   const forAdd = currentTab === "add";
   const aktifId = forAdd ? formKategoriId : filterKategoriId;
 
-  let html = `<div class="side-title">Kategori</div>`;
+  let html = `<div class="side-sep"></div><div class="side-title">Kategori</div>`;
   // mobile dropdown
   let dopts = `<option value="">Semua kategori</option>`;
   const walk = (pid, depth) => {
@@ -513,7 +558,8 @@ function renderSidebar(){
     });
   });
   html += `</div>`;
-  el.innerHTML = html;
+  el.innerHTML = nav + html;
+  bindNav(el);
 
   const pilih = (id) => {
     if (forAdd){ formKategoriId = id; renderKatTingkat && renderKatTingkat(); renderSidebar(); }
@@ -546,18 +592,6 @@ function catCntBadge(cnt, belum){
   return `<span class="cat-cnt${merah}"${title}>${cnt}</span>`;
 }
 
-function renderKelolaSidebar(el){
-  const menu = [
-    { k:"kategori", t:"Kategori", ic:'<path d="M3 7h18M3 12h18M3 17h18"/>' },
-    { k:"kondimen", t:"Material Kondimen", ic:'<path d="M12 2l2 5 5 .5-4 3.5 1 5-4-2.5L8 19l1-5-4-3.5 5-.5z"/>' },
-    { k:"cabang", t:"Cabang", ic:'<path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h1m4 0h1m-6 4h1m4 0h1m-6 4h1m4 0h1"/>' },
-    { k:"log", t:"Log perubahan", ic:'<path d="M12 8v4l3 3M3 12a9 9 0 1018 0 9 9 0 00-18 0z"/>' },
-  ];
-  el.innerHTML = `<div class="side-title">Pengaturan</div><div class="side-menu">` +
-    menu.map(m => `<div class="side-menu-item ${kelolaSub===m.k?"active":""}" data-sub="${m.k}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${m.ic}</svg>${m.t}</div>`).join("") +
-    `</div>`;
-  $all("[data-sub]", el).forEach(t => t.addEventListener("click", () => { kelolaSub = t.dataset.sub; renderSidebar(); renderKelolaBody(); }));
-}
 function produkBelumDiisi(p){
   return !Number(p.hpp_terakhir);
 }
@@ -1942,28 +1976,18 @@ function tutupDashDetail(){
 
 function switchTab(tab){
   currentTab = tab;
-  $("#tabDash") && $("#tabDash").classList.toggle("active", tab === "dash");
-  $("#tabList").classList.toggle("active", tab === "list");
-  $("#tabAdd").classList.toggle("active", tab === "add");
-  $("#tabKelola").classList.toggle("active", tab === "kelola");
   $("#viewDash") && $("#viewDash").classList.toggle("hidden", tab !== "dash");
   $("#viewList").classList.toggle("hidden", tab !== "list");
   $("#viewAdd").classList.toggle("hidden", tab !== "add");
   $("#viewKelola").classList.toggle("hidden", tab !== "kelola");
-  // layout 2 kolom hanya di tab produk/tambah/kelola, bukan dashboard.
-  // #prodHero sekarang di dalam #viewList (bukan di .app-chrome lagi) jadi
-  // ikut ter-hide otomatis lewat toggle #viewList di atas, tidak perlu
-  // ditoggle terpisah.
-  const layout = document.querySelector("#fnbSection .app-layout"); if (layout) layout.style.display = tab === "dash" ? "none" : "";
+  // Semua tab sekarang pakai app-layout (sidebar + konten) -- struktur & ukuran
+  // sama di semua halaman. Navigasi antar-tab ada di sidebar (navMenuHtml),
+  // di-render ulang tiap switchTab supaya state aktif ikut update.
   if (tab === "add" && !editingProdukId) newForm();
   if (tab === "kelola") renderKelola();
   else if (tab === "dash") renderDashboard();
-  else renderSidebar();
+  renderSidebar();
 }
-$("#tabDash") && $("#tabDash").addEventListener("click", () => switchTab("dash"));
-$("#tabList").addEventListener("click", () => switchTab("list"));
-$("#tabAdd").addEventListener("click", () => { editingProdukId = null; switchTab("add"); });
-$("#tabKelola").addEventListener("click", () => switchTab("kelola"));
 
 // ---------------------------------------------------------------------
 //  KELOLA: kategori, cabang, log
