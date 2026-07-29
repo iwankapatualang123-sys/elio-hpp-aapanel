@@ -348,9 +348,12 @@
   .menu-card::before{ content:""; position:absolute; inset:0; background:linear-gradient(135deg,var(--green-light),transparent 60%); opacity:0; transition:opacity .25s ease; }
   .menu-card:hover{ transform:translateY(-3px); box-shadow:var(--shadow-lg); border-color:var(--green); }
   .menu-card:hover::before{ opacity:1; }
-  .menu-card-glow{ position:absolute; top:-60px; right:-60px; width:160px; height:160px; background:radial-gradient(circle,var(--green-ring),transparent 70%); opacity:0; transition:opacity .3s ease; pointer-events:none; }
-  .menu-card:hover .menu-card-glow{ opacity:0.7; }
   .menu-card > *{ position:relative; z-index:1; }
+  /* Spesifisitas (0,2,0) -- WAJIB lebih tinggi dari .menu-card > * (0,1,0) di
+     atas, kalau tidak glow ikut jadi position:relative (blok 160px di aliran)
+     yang mendorong ikon Makanan turun jauh ke bawah. */
+  .menu-card > .menu-card-glow{ position:absolute; top:-60px; right:-60px; width:160px; height:160px; background:radial-gradient(circle,var(--green-ring),transparent 70%); opacity:0; transition:opacity .3s ease; pointer-events:none; z-index:0; }
+  .menu-card:hover .menu-card-glow{ opacity:0.7; }
   .menu-ic{ width:56px; height:56px; border-radius:14px; display:flex; align-items:center; justify-content:center; background:linear-gradient(135deg,var(--green),var(--green-dark)); color:#fff; box-shadow:0 6px 16px -6px var(--green-ring); }
   .menu-ic svg{ width:28px; height:28px; }
   .menu-ic.ic-amber{ background:linear-gradient(135deg,var(--amber),#6E4710); box-shadow:none; }
@@ -710,7 +713,7 @@
 </div>
 
 <div id="menuScreen" class="hidden">
-  <div class="wrap">
+  <div class="wrap wide">
     <div class="app-chrome">
       <header>
         <div class="brand">
