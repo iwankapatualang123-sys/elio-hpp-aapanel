@@ -721,6 +721,14 @@ function renderProdukList(){
       const statusHtml = belum
         ? `<span class="status-pill status-belum"><svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h16.9a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>Belum diisi</span>`
         : (st ? `<span class="status-pill ${st.cls}">${st.txt}</span>` : "");
+      // harga jual efektif = aktual kalau diisi, else ikut rekomendasi -- selisih & persen dihitung dari nilai ini
+      const rekom = Number(p.harga_jual_disarankan) || 0;
+      const hargaEfektif = (p.harga_jual_aktual !== null && p.harga_jual_aktual !== undefined) ? Number(p.harga_jual_aktual) : rekom;
+      const selisihNom = Math.round(hargaEfektif - rekom);
+      const persenRekom = rekom > 0 ? Math.round((hargaEfektif / rekom) * 100) : null;
+      const selisihHtml = belum ? "—" : (selisihNom === 0
+        ? `<span class="num-val">Rp 0</span><div class="sub-note">100% dr rekom</div>`
+        : `<span class="num-val">${selisihNom > 0 ? "+" : "-"}${rp(Math.abs(selisihNom))}</span><div class="sub-note">${persenRekom != null ? persenRekom + "% dr rekom" : ""}</div>`);
       return `<tr class="prod-row ${belum ? "belum" : ""} ${edge}" data-id="${esc(p.id)}">
         <td><span class="pnm">${esc(p.nama)}</span>${usang}</td>
         <td>${statusHtml}</td>
@@ -729,10 +737,9 @@ function renderProdukList(){
           <div class="ct-tgl">${tgl}</div>
         </td>
         <td class="r"><span class="num-val">${belum ? "—" : rp(p.hpp_terakhir)}</span>${tren}</td>
-        <td class="r">
-          <span class="num-val hl">${belum ? "—" : rp(p.harga_jual_aktual ?? p.harga_jual_disarankan)}</span>
-          ${(!belum && p.harga_jual_aktual !== null && p.harga_jual_aktual !== undefined) ? `<div class="sub-note">saran ${rp(p.harga_jual_disarankan)}</div>` : ""}
-        </td>
+        <td class="r"><span class="num-val">${belum ? "—" : rp(rekom)}</span></td>
+        <td class="r"><span class="num-val hl">${belum ? "—" : rp(hargaEfektif)}</span></td>
+        <td class="r">${selisihHtml}</td>
         <td class="r"><span class="num-val">${p.target_margin_persen}%</span></td>
         <td class="r"><button class="prod-dup" data-dup="${esc(p.id)}" title="Duplikat produk"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button></td>
       </tr>`;
@@ -740,7 +747,7 @@ function renderProdukList(){
     return `<div class="prod-card">
       <div class="prod-card-head"><span>${esc(key)}</span><span class="cnt">${grup[key].length}</span></div>
       <div class="prod-table-wrap"><table class="prod-table">
-        <thead><tr><th>Produk</th><th>Status</th><th>Cabang &amp; tanggal</th><th class="r">HPP</th><th class="r">Harga jual</th><th class="r">Margin</th><th></th></tr></thead>
+        <thead><tr><th>Produk</th><th>Status</th><th>Cabang &amp; tanggal</th><th class="r">HPP</th><th class="r">Harga rekomendasi</th><th class="r">Harga jual</th><th class="r">Selisih</th><th class="r">Margin</th><th></th></tr></thead>
         <tbody>${rows}</tbody>
       </table></div>
     </div>`;
