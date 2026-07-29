@@ -226,9 +226,14 @@ function renderCabangDropdown(){
     }));
   });
 }
-// tutup dropdown saat klik di luar
-document.addEventListener("click", () => {
+// tutup dropdown/search-results saat klik di luar area terkait (bukan cuma
+// saat pilih item — dulu #k-hasil cuma bisa hilang lewat klik item, jadi
+// nyangkut kalau user berubah pikiran dan mau klik kartu lain)
+document.addEventListener("click", (e) => {
   document.querySelectorAll(".cab-dd.open").forEach(x => x.classList.remove("open"));
+  document.querySelectorAll(".search-results:not(.hidden)").forEach(el => {
+    if (!el.closest(".search-wrap")?.contains(e.target)) el.classList.add("hidden");
+  });
 });
 function katChildren(parentId){
   return kategoriList
