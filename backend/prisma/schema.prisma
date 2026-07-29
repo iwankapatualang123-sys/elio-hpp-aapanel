@@ -36,6 +36,7 @@ model Produk {
   targetMarginPersen   Decimal   @default(60) @map("target_margin_persen") @db.Decimal(6, 2)
   hppTerakhir          Decimal   @default(0) @map("hpp_terakhir") @db.Decimal(14, 2)
   hargaJualDisarankan  Decimal   @default(0) @map("harga_jual_disarankan") @db.Decimal(14, 2)
+  hargaJualAktual      Decimal?  @map("harga_jual_aktual") @db.Decimal(14, 2) // harga jual sungguhan di outlet, diisi manual — beda dari hargaJualDisarankan (hasil hitung margin)
   caraProses           String?   @map("cara_proses") @db.Text // JSON-stringified [{teks,level}] — disimpan apa adanya, di-parse di frontend
   isDeleted            Boolean   @default(false) @map("is_deleted")
   createdAt            DateTime  @default(now()) @map("created_at")

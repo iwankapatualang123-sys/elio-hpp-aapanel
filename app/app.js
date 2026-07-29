@@ -744,7 +744,7 @@ function renderProdukList(){
         </div>
         <div class="nums">
           <div><div class="num-lbl">HPP</div><div class="num-val">${belum ? "—" : rp(p.hpp_terakhir)}${tren}${(!belum && p._spark && p._spark.length >= 2) ? sparklineSvg(p._spark, p._tren === "naik" ? "var(--red)" : "#1E7D46") : ""}</div></div>
-          <div><div class="num-lbl">Harga jual</div><div class="num-val hl">${belum ? "—" : rp(p.harga_jual_disarankan)}</div></div>
+          <div><div class="num-lbl">Harga jual</div><div class="num-val hl">${belum ? "—" : rp(p.harga_jual_aktual ?? p.harga_jual_disarankan)}</div>${(!belum && p.harga_jual_aktual !== null && p.harga_jual_aktual !== undefined) ? `<div class="num-lbl" style="margin-top:2px;text-transform:none;letter-spacing:0;">saran ${rp(p.harga_jual_disarankan)}</div>` : ""}</div>
           <div><div class="num-lbl">Margin</div><div class="num-val">${p.target_margin_persen}%</div></div>
           <button class="prod-dup" data-dup="${esc(p.id)}" title="Duplikat produk"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button>
         </div>
@@ -843,7 +843,7 @@ async function updateSemuaHarga(){
   await loadKonversi();
 
   // 1) Kondimen dulu — HPP produk yang pakai kondimen (★) bergantung ke nilai ini
-  let kondimenBerubah = 0, kondimenDilewati = 0;
+  let kondimenBerubah = 0, kondimenDilewati = 0, kondimenGagal = 0;
   for (const k of kondimenList){
     const { data: bahanRows } = await sb.from("kondimen_bahan").select("*").eq("kondimen_id", k.id);
     const bahan = (bahanRows || []).map(b => {
@@ -861,14 +861,15 @@ async function updateSemuaHarga(){
     const per = k.total_hasil > 0 ? total / k.total_hasil : 0;
     const hppTotal = Math.round(total * 100) / 100, hppPer = Math.round(per * 100) / 100;
     if (hppTotal !== k.hpp_total || hppPer !== k.hpp_per_satuan){
-      await sb.from("kondimen").update({ hpp_total: hppTotal, hpp_per_satuan: hppPer, updated_at: new Date().toISOString() }).eq("id", k.id);
+      const { error: errK } = await sb.from("kondimen").update({ hpp_total: hppTotal, hpp_per_satuan: hppPer, updated_at: new Date().toISOString() }).eq("id", k.id);
+      if (errK){ console.error("update kondimen gagal:", k.nama, errK); kondimenGagal++; continue; }
       k.hpp_total = hppTotal; k.hpp_per_satuan = hppPer;
       kondimenBerubah++;
     }
   }
 
   // 2) Produk — pakai kondimenList yang sudah direfresh di atas (lewat allBahan())
-  let produkBerubah = 0;
+  let produkBerubah = 0, produkGagal = 0;
   for (const p of produkList){
     const { data: reseps } = await sb.from("resep_bahan").select("*").eq("produk_id", p.id);
     if (!reseps || !reseps.length) continue; // belum diisi, tidak ada yang direfresh
@@ -896,7 +897,8 @@ async function updateSemuaHarga(){
     const hppBaru = Math.round(final), hargaBaru = Math.round(hargaJual);
     const hppLama = Math.round(Number(p.hpp_terakhir) || 0);
     if (hppBaru !== hppLama){
-      await sb.from("produk").update({ hpp_terakhir: hppBaru, harga_jual_disarankan: hargaBaru, updated_at: new Date().toISOString() }).eq("id", p.id);
+      const { error: errP } = await sb.from("produk").update({ hpp_terakhir: hppBaru, harga_jual_disarankan: hargaBaru, updated_at: new Date().toISOString() }).eq("id", p.id);
+      if (errP){ console.error("update produk gagal:", p.nama, errP); produkGagal++; continue; }
       await sb.from("produk_hpp_history").insert({ produk_id: p.id, hpp: hppBaru, harga_jual: hargaBaru, margin_persen: marginPersen });
       await catatLog(p.id, p.nama, "update-harga", `HPP ${rp(hppLama)} → ${rp(hppBaru)}, harga jual ${rp(hargaBaru)}`);
       produkBerubah++;
@@ -909,6 +911,7 @@ async function updateSemuaHarga(){
   let ringkasan = produkBerubah ? `${produkBerubah} produk diperbarui harganya` : "Semua harga produk sudah paling baru";
   if (kondimenBerubah) ringkasan += `, ${kondimenBerubah} kondimen ikut diperbarui`;
   if (kondimenDilewati) ringkasan += `. ${kondimenDilewati} kondimen dilewati (satuan bahan belum lengkap)`;
+  if (produkGagal || kondimenGagal) ringkasan += `. Gagal: ${produkGagal} produk, ${kondimenGagal} kondimen`;
   toast(ringkasan);
 
   if (btn && document.body.contains(btn)){ btn.disabled = false; btn.innerHTML = labelAsli; }
@@ -953,6 +956,7 @@ let formBahan = [];  // {nama, nama_normal, harga, sumber, konv:{isi,unit}|null,
 let formOpex = [];   // {label, mode:'manual'|'persen', value}
 let formOverheadPersen = 15;
 let formMargin = 60;
+let formHargaAktual = null; // harga jual sungguhan di outlet (opsional) — null = belum diisi, ikut harga disarankan
 let formProses = [];  // {teks, level}  level: penting|hati|normal|info
 let kondimenList = []; // {id, nama, satuan_hasil, hpp_per_satuan, ...}
 
@@ -964,7 +968,7 @@ const PROSES_LEVEL = {
 };
 
 function newForm(){
-  formBahan = []; formOpex = []; formOverheadPersen = 15; formMargin = 60; editingProdukId = null; formKategoriId = ""; formProses = [];
+  formBahan = []; formOpex = []; formOverheadPersen = 15; formMargin = 60; formHargaAktual = null; editingProdukId = null; formKategoriId = ""; formProses = [];
   const d = bacaDraft();
   if (d && !editingProdukId){
     // ada draft tersimpan — tawarkan pulihkan
@@ -1063,6 +1067,12 @@ function renderAddView(){
         <span class="amt" id="s-harga">Rp 0</span>
       </div>
 
+      <div class="field" style="margin-top:14px;">
+        <label>Harga jual aktual di outlet (opsional)</label>
+        <input type="number" id="f-harga-aktual" placeholder="Isi kalau beda dari harga disarankan" value="${formHargaAktual !== null && formHargaAktual !== undefined ? formHargaAktual : ""}">
+      </div>
+      <div class="bmm-hasil" id="s-selisih" style="display:none;"></div>
+
       <button class="btn btn-primary btn-block" id="f-simpan">${editingProdukId ? "Simpan Perubahan" : "Simpan Produk"}</button>
       ${!editingProdukId ? '<button class="btn btn-block" id="f-draft" style="margin-top:8px;">Simpan sebagai draft</button>' : ""}
       ${editingProdukId ? '<button class="btn btn-danger btn-block" id="f-hapus" style="margin-top:8px;">Hapus Produk</button>' : ""}
@@ -1077,6 +1087,7 @@ function renderAddView(){
 
   $("#f-oh").addEventListener("input", (e) => { formOverheadPersen = +e.target.value; $("#f-oh-val").textContent = formOverheadPersen + "%"; recalc(); autoDraft(); });
   $("#f-mg").addEventListener("input", (e) => { formMargin = +e.target.value; $("#f-mg-val").textContent = formMargin + "%"; recalc(); autoDraft(); });
+  $("#f-harga-aktual").addEventListener("input", (e) => { const v = e.target.value.trim(); formHargaAktual = v === "" ? null : (parseFloat(v) || 0); recalc(); autoDraft(); });
   $("#f-add-opex").addEventListener("click", () => { formOpex.push({ label: "", mode: "manual", value: 0 }); renderOpex(); recalc(); });
   $("#f-add-proses").addEventListener("click", () => { formProses.push({ teks: "", level: "normal" }); renderProses(); autoDraft(); });
   $("#f-simpan").addEventListener("click", saveProduk);
@@ -1128,7 +1139,7 @@ function kumpulkanForm(){
     nama: ($("#f-nama") ? $("#f-nama").value : "") || "",
     kategori_id: formKategoriId,
     cabang_hpp_id: $("#f-cabang") ? $("#f-cabang").value : null,
-    overhead: formOverheadPersen, margin: formMargin,
+    overhead: formOverheadPersen, margin: formMargin, hargaAktual: formHargaAktual,
     bahan: formBahan, opex: formOpex, proses: formProses,
     ts: Date.now(),
   };
@@ -1140,7 +1151,7 @@ function bacaDraft(){ try{ const s = localStorage.getItem(DRAFT_KEY); if (!s) re
 function hapusDraft(){ try{ localStorage.removeItem(DRAFT_KEY); }catch(e){} }
 function pulihkanDraft(d){
   formKategoriId = d.kategori_id || "";
-  formOverheadPersen = d.overhead ?? 15; formMargin = d.margin ?? 60;
+  formOverheadPersen = d.overhead ?? 15; formMargin = d.margin ?? 60; formHargaAktual = (d.hargaAktual ?? null);
   formBahan = d.bahan || []; formOpex = d.opex || []; formProses = d.proses || [];
   renderAddView();
   if ($("#f-nama")) $("#f-nama").value = d.nama || "";
@@ -1517,6 +1528,19 @@ function recalc(){
   $("#s-opex") && ($("#s-opex").textContent = rp(opex));
   $("#s-final") && ($("#s-final").textContent = rp(final));
   $("#s-harga") && ($("#s-harga").textContent = rp(harga));
+  const selEl = $("#s-selisih");
+  if (selEl){
+    if (formHargaAktual === null || formHargaAktual === undefined){
+      selEl.style.display = "none";
+    } else {
+      const selisih = Math.round(formHargaAktual - harga);
+      selEl.style.display = "block";
+      selEl.className = "bmm-hasil" + (selisih !== 0 ? " filled" : "");
+      selEl.innerHTML = selisih === 0
+        ? "Sama dengan harga disarankan"
+        : `<b>${selisih > 0 ? "+" : "-"}${rp(Math.abs(selisih))}</b> ${selisih > 0 ? "di atas" : "di bawah"} harga disarankan (${rp(harga)})`;
+    }
+  }
   return { material, overhead, opex, final, harga };
 }
 
@@ -1536,6 +1560,7 @@ async function saveProduk(){
     target_margin_persen: formMargin,
     hpp_terakhir: Math.round(calc.final),
     harga_jual_disarankan: Math.round(calc.harga),
+    harga_jual_aktual: (formHargaAktual !== null && formHargaAktual !== undefined) ? Math.round(formHargaAktual) : null,
     cara_proses: JSON.stringify(formProses.filter(s => s.teks.trim())),
     updated_at: new Date().toISOString(),
   };
@@ -1584,6 +1609,7 @@ async function openEdit(id){
   editingProdukId = id;
   formOverheadPersen = Number(p.overhead_persen) || 15;
   formMargin = Number(p.target_margin_persen) || 60;
+  formHargaAktual = (p.harga_jual_aktual !== null && p.harga_jual_aktual !== undefined) ? Number(p.harga_jual_aktual) : null;
 
   const { data: reseps } = await sb.from("resep_bahan").select("*").eq("produk_id", id);
   const { data: opexs } = await sb.from("biaya_operasional_produk").select("*").eq("produk_id", id);

@@ -31,6 +31,7 @@ const produkSchema = z.object({
   targetMarginPersen: z.number(),
   hppTerakhir: z.number(),
   hargaJualDisarankan: z.number(),
+  hargaJualAktual: z.number().nullable().optional(),
   caraProses: z.string().nullable().optional()
 });
 
@@ -42,8 +43,11 @@ router.post('/', async (req, res) => {
   res.status(201).json(row);
 });
 
+// .partial(): PUT dipakai juga oleh updateSemuaHarga() di app.js (refresh massal
+// harga acuan) yang cuma kirim sebagian kolom (hpp_terakhir dkk) — bukan seluruh
+// field seperti form Simpan Produk biasa.
 router.put('/:id', async (req, res) => {
-  const parsed = produkSchema.safeParse(req.body);
+  const parsed = produkSchema.partial().safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: 'Data produk tidak valid.', detail: parsed.error.flatten() });
 
   const row = await prisma.produk.update({ where: { id: req.params.id }, data: parsed.data });
