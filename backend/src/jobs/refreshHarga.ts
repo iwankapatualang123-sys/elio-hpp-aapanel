@@ -111,14 +111,30 @@ export async function refreshSemuaHarga(): Promise<HasilRefresh> {
       continue; // belum diisi, tidak ada yang direfresh
     }
 
+    // Sama seperti kondimen: kalau ada bahan yang belum lengkap konversi satuannya
+    // (dan tidak ada hargaOverride), JANGAN hitung pakai harga mentah -- itu yang
+    // bikin "lkk minyak wijen" (harga per botol) kepakai seolah harga per-ml, HPP
+    // "Nasi Goreng Hongkong" meledak ~118x (912.296 padahal harusnya ~7.677).
+    // Lewati seluruh produk itu, jangan diam2 salah hitung.
+    const semuaLengkap = reseps.every((r) => {
+      if (r.hargaOverride !== null && r.hargaOverride !== undefined) return true;
+      const found = cariBahan(r.bahanNamaNormal);
+      return !!(found && found.konvIsi !== null);
+    });
+    if (!semuaLengkap) {
+      produkDilewati++;
+      continue;
+    }
+
     let material = 0;
     for (const r of reseps) {
-      const found = cariBahan(r.bahanNamaNormal);
-      const harga = found ? found.harga : 0;
-      const konvIsi = found ? found.konvIsi : null;
       const override = r.hargaOverride !== null && r.hargaOverride !== undefined ? Number(r.hargaOverride) : null;
-      const eff = override !== null ? override : konvIsi ? harga / konvIsi : harga;
-      material += eff * Number(r.qtyPakai || 0);
+      if (override !== null) {
+        material += override * Number(r.qtyPakai || 0);
+        continue;
+      }
+      const found = cariBahan(r.bahanNamaNormal) as { harga: number; konvIsi: number };
+      material += (found.harga / found.konvIsi) * Number(r.qtyPakai || 0);
     }
 
     const opexRows = await prisma.biayaOperasionalProduk.findMany({ where: { produkId: p.id } });

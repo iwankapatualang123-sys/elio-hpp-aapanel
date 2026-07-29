@@ -924,19 +924,28 @@ async function updateSemuaHarga(){
   }
 
   // 2) Produk — pakai kondimenList yang sudah direfresh di atas (lewat allBahan())
-  let produkBerubah = 0, produkGagal = 0;
+  let produkBerubah = 0, produkGagal = 0, produkDilewati = 0;
   for (const p of produkList){
     const { data: reseps } = await sb.from("resep_bahan").select("*").eq("produk_id", p.id);
     if (!reseps || !reseps.length) continue; // belum diisi, tidak ada yang direfresh
 
+    // Sama seperti kondimen: kalau ada bahan yang belum lengkap konversi satuannya
+    // (dan tidak ada harga_override), JANGAN hitung pakai harga mentah -- itu yang
+    // bikin "lkk minyak wijen" (harga per botol) kepakai seolah harga per-ml, HPP
+    // meledak ~118x. Lewati seluruh produk itu, jangan diam2 salah hitung.
+    const semuaLengkap = reseps.every(r => {
+      if (r.harga_override !== null && r.harga_override !== undefined) return true;
+      const found = allBahan().find(x => x.nama_normal === r.bahan_nama_normal);
+      return !!(found && found.konv);
+    });
+    if (!semuaLengkap){ produkDilewati++; continue; }
+
     let material = 0;
     reseps.forEach(r => {
-      const found = allBahan().find(x => x.nama_normal === r.bahan_nama_normal);
-      const harga = found ? found.harga : 0;
-      const konv = found ? found.konv : null;
       const override = (r.harga_override !== null && r.harga_override !== undefined) ? Number(r.harga_override) : null;
-      const eff = override != null ? override : (konv ? harga / (konv.isi || 1) : harga);
-      material += eff * (Number(r.qty_pakai) || 0);
+      if (override != null){ material += override * (Number(r.qty_pakai) || 0); return; }
+      const found = allBahan().find(x => x.nama_normal === r.bahan_nama_normal);
+      material += (found.harga / (found.konv.isi || 1)) * (Number(r.qty_pakai) || 0);
     });
 
     const { data: opexs } = await sb.from("biaya_operasional_produk").select("*").eq("produk_id", p.id);
@@ -965,7 +974,7 @@ async function updateSemuaHarga(){
 
   let ringkasan = produkBerubah ? `${produkBerubah} produk diperbarui harganya` : "Semua harga produk sudah paling baru";
   if (kondimenBerubah) ringkasan += `, ${kondimenBerubah} kondimen ikut diperbarui`;
-  if (kondimenDilewati) ringkasan += `. ${kondimenDilewati} kondimen dilewati (satuan bahan belum lengkap)`;
+  if (produkDilewati || kondimenDilewati) ringkasan += `. Dilewati (satuan bahan belum lengkap): ${produkDilewati} produk, ${kondimenDilewati} kondimen`;
   if (produkGagal || kondimenGagal) ringkasan += `. Gagal: ${produkGagal} produk, ${kondimenGagal} kondimen`;
   toast(ringkasan);
 
