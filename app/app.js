@@ -2055,7 +2055,7 @@ function renderKondimenBahan(){
     const unit = b.konv.unit;
     const perUnit = (b.override != null) ? b.override : b.harga / (b.konv.isi || 1);
     const sub = perUnit * (b.qty || 0);
-    return `<div class="bahan-row" style="padding:10px 12px;">
+    return `<div class="bahan-row" style="padding:10px 12px;" data-i="${i}">
       <div style="display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center;">
         <span class="brow-nm">${esc(b.nama)}</span>
         <span style="display:flex;align-items:center;gap:6px;"><input type="number" value="${b.qty}" data-kq="${i}" style="width:80px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;text-align:right;font-size:13px;"><span style="font-size:11px;color:var(--ink-faint);">${esc(unit)}</span></span>
@@ -2067,7 +2067,17 @@ function renderKondimenBahan(){
       </div>
     </div>`;
   }).join("");
-  $all("[data-kq]", el).forEach(inp => inp.addEventListener("input", (ev) => { e.bahan[+ev.target.dataset.kq].qty = parseFloat(ev.target.value) || 0; renderKondimenBahan(); refreshKondimenHpp(); }));
+  // input (bukan change) + update bertarget (bukan renderKondimenBahan penuh)
+  // biar kolom qty bisa diketik multi-digit — render ulang setiap keystroke
+  // menghancurkan & bikin ulang elemen input-nya, jadi fokus hilang tiap
+  // karakter (persis keluhan yang dilaporkan: "tidak bisa diketik lebih dari
+  // 1 angka"). Pola sama seperti updateBrowMain() di form produk utama.
+  $all("[data-kq]", el).forEach(inp => inp.addEventListener("input", (ev) => {
+    const i = +ev.target.dataset.kq;
+    e.bahan[i].qty = parseFloat(ev.target.value) || 0;
+    updateKondimenBahanRow(i);
+    refreshKondimenHpp();
+  }));
   $all("[data-krm]", el).forEach(b => b.addEventListener("click", () => { e.bahan.splice(+b.dataset.krm, 1); renderKondimenBahan(); refreshKondimenHpp(); }));
   $all("[data-kperpcs]", el).forEach(b => b.addEventListener("click", () => simpanKonversiKondimen(+b.dataset.kperpcs, 1, "pcs")));
   $all("[data-ksavesat]", el).forEach(b => b.addEventListener("click", () => {
@@ -2096,6 +2106,15 @@ function refreshKondimenHpp(){
   const calc = hitungKondimenHpp();
   if ($("#k-hpp-total")) $("#k-hpp-total").textContent = rp(calc.total);
   if ($("#k-hpp-per")) $("#k-hpp-per").textContent = calc.per.toFixed(2);
+}
+function updateKondimenBahanRow(i){
+  const b = kondimenEdit.bahan[i];
+  if (!b.konv) return; // baris "lengkapi satuan" -- tidak ada .brow-sub buat diupdate
+  const row = $(`.bahan-row[data-i="${i}"]`);
+  if (!row) return;
+  const perUnit = (b.override != null) ? b.override : b.harga / (b.konv.isi || 1);
+  const subEl = row.querySelector(".brow-sub");
+  if (subEl) subEl.textContent = rp(perUnit * (b.qty || 0));
 }
 
 async function simpanKondimen(){
