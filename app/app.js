@@ -1040,20 +1040,27 @@ function pulihkanDraft(d){
 
 let formKategoriId = "";  // kategori terpilih (id daun terdalam)
 function renderKatTingkat(){
+  // Dulu cuma nampilin path terpilih + suruh pilih dari panel sidebar kiri —
+  // membingungkan karena aksinya di tempat lain dari field ini. Sekarang
+  // dropdown langsung di sini (pola sama seperti dropdown kategori mobile di
+  // renderSidebar), sidebar kiri tetap ada buat menjelajah/lihat pohon
+  // kategori tapi bukan satu-satunya cara pilih lagi.
   const wrap = $("#f-kat-tingkat");
   if (!wrap) return;
-  const path = formKategoriId ? katPathNoRoot(formKategoriId) : "";
-  wrap.innerHTML = path
-    ? `<div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--green-light);border-radius:8px;">
-         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="var(--green-dark)" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>
-         <span style="font-size:13px;font-weight:600;color:var(--green-dark);flex:1;">${esc(path)}</span>
-         <button class="btn btn-sm" id="f-kat-ganti" style="font-size:11px;">Ubah</button>
-       </div>`
-    : `<div style="padding:10px 12px;background:var(--panel);border-radius:8px;font-size:13px;color:var(--ink-faint);">
-         Pilih kategori di panel kiri ←
-       </div>`;
-  const ganti = $("#f-kat-ganti");
-  if (ganti) ganti.addEventListener("click", () => { formKategoriId = ""; renderKatTingkat(); renderSidebar(); });
+  const rootId = katRootFnb();
+  let opts = `<option value="">Pilih kategori…</option>`;
+  const walk = (pid, depth) => {
+    katChildren(pid).forEach(k => {
+      opts += `<option value="${esc(k.id)}" ${k.id === formKategoriId ? "selected" : ""}>${"— ".repeat(depth)}${esc(k.nama)}</option>`;
+      walk(k.id, depth + 1);
+    });
+  };
+  walk(rootId, 0);
+  wrap.innerHTML = `<select id="f-kat-select">${opts}</select>`;
+  $("#f-kat-select").addEventListener("change", (e) => {
+    formKategoriId = e.target.value;
+    renderSidebar();
+  });
 }
 
 function addBahanByNormal(nn){
