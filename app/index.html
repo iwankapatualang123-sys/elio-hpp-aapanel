@@ -292,6 +292,10 @@
   .app-chrome .tab{ background:transparent; border-color:transparent; box-shadow:none; color:rgba(255,255,255,0.72); }
   .app-chrome .tab:hover{ background:rgba(255,255,255,0.12); }
   .app-chrome .tab.active{ background:rgba(255,255,255,0.18); color:#fff; box-shadow:none; }
+  /* #menuScreen: header duluan baru menu-hero (bukan hero-duluan seperti
+     #appScreen) -- header di sini tidak butuh garis pemisah di atasnya. */
+  #menuScreen .app-chrome header{ padding-top:0; border-top:none; margin:0 0 6px; }
+  #menuScreen .app-chrome .menu-hero{ background:transparent; box-shadow:none; border-radius:0; margin:0; padding:16px 2px 12px; }
   /* Tab dash/add/kelola: hero sendiri (.dash-hero/.sub-hero) nyambung rapat
      ke bawah .app-chrome -- lihat toggle .continues di switchTab(). */
   .app-chrome.continues{ border-radius:18px 18px 0 0; margin-bottom:0; box-shadow:none; border-bottom:none; }
@@ -704,29 +708,31 @@
 
 <div id="menuScreen" class="hidden">
   <div class="wrap">
-    <header>
-      <div class="brand">
-        <div class="logo">HPP</div>
-        <div>
-          <div class="name">HPP Elio</div>
-          <div class="sub">Pilih jenis usaha</div>
+    <div class="app-chrome">
+      <header>
+        <div class="brand">
+          <div class="logo">HPP</div>
+          <div>
+            <div class="name">HPP Elio</div>
+            <div class="sub">Pilih jenis usaha</div>
+          </div>
         </div>
-      </div>
-      <div class="header-actions">
-        <div class="user-chip">
-          <span class="avatar" id="userAvatarM">H</span>
-          <span id="userEmailM">—</span>
+        <div class="header-actions">
+          <div class="user-chip">
+            <span class="avatar" id="userAvatarM">H</span>
+            <span id="userEmailM">—</span>
+          </div>
+          <button class="btn btn-danger btn-sm" id="logoutBtnM">Keluar</button>
         </div>
-        <button class="btn btn-danger btn-sm" id="logoutBtnM">Keluar</button>
-      </div>
-    </header>
-    <div class="menu-hero">
-      <div class="menu-hero-grid"></div>
-      <div class="menu-hero-glow"></div>
-      <div class="menu-hero-content">
-        <div class="menu-hero-badge"><span class="dot"></span> Sistem Kalkulasi HPP</div>
-        <h1 class="menu-hero-title">Selamat datang di HPP Elio</h1>
-        <p class="menu-hero-sub">Pilih jenis usaha untuk mulai menghitung harga pokok &amp; harga jual.</p>
+      </header>
+      <div class="menu-hero">
+        <div class="menu-hero-grid"></div>
+        <div class="menu-hero-glow"></div>
+        <div class="menu-hero-content">
+          <div class="menu-hero-badge"><span class="dot"></span> Sistem Kalkulasi HPP</div>
+          <h1 class="menu-hero-title">Selamat datang di HPP Elio</h1>
+          <p class="menu-hero-sub">Pilih jenis usaha untuk mulai menghitung harga pokok &amp; harga jual.</p>
+        </div>
       </div>
     </div>
 
