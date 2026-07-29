@@ -292,6 +292,10 @@
   .app-chrome .tab{ background:transparent; border-color:transparent; box-shadow:none; color:rgba(255,255,255,0.72); }
   .app-chrome .tab:hover{ background:rgba(255,255,255,0.12); }
   .app-chrome .tab.active{ background:rgba(255,255,255,0.18); color:#fff; box-shadow:none; }
+  /* Tab dash/add/kelola: hero sendiri (.dash-hero/.sub-hero) nyambung rapat
+     ke bawah .app-chrome -- lihat toggle .continues di switchTab(). */
+  .app-chrome.continues{ border-radius:18px 18px 0 0; margin-bottom:0; box-shadow:none; border-bottom:none; }
+  #viewDash .dash-hero, #viewAdd .sub-hero, #viewKelola .sub-hero{ border-radius:0 0 14px 14px; margin-top:0; }
   @media (max-width:640px){ .app-chrome{ padding:12px 16px 10px; border-radius:16px; } }
 
   .empty{ text-align:center; padding:40px 20px; color:var(--ink-faint); font-size:14px; }
