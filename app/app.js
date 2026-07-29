@@ -1109,8 +1109,9 @@ function bukaBahanManualModal(prefill){
             <div class="field"><label>Satuan</label><select id="bmm-satuan"><option value="gr">gr</option><option value="ml">ml</option><option value="pcs">pcs</option></select></div>
           </div>
           <div class="bmm-hasil" id="bmm-hasil"></div>
+          <div class="field" style="margin-top:14px;"><label id="bmm-pakai-label">Jumlah pemakaian di resep ini</label><input type="number" id="bmm-pakai" min="0" step="0.01" placeholder="0"></div>
         </div>
-        <div class="bm-foot"><span></span><button class="btn btn-primary btn-sm" id="bmmSimpan">Simpan</button></div>
+        <div class="bm-foot"><span></span><button class="btn btn-primary btn-sm" id="bmmSimpan">Simpan &amp; Tambahkan</button></div>
       </div>`;
     document.body.appendChild(modal);
     modal.querySelector(".dm-backdrop").addEventListener("click", tutupBahanManualModal);
@@ -1126,6 +1127,7 @@ function bukaBahanManualModal(prefill){
   modal.querySelector("#bmm-hargabeli").value = "";
   modal.querySelector("#bmm-jumlah").value = "";
   modal.querySelector("#bmm-satuan").value = "gr";
+  modal.querySelector("#bmm-pakai").value = "";
   updateBmmHasil();
   modal.classList.remove("hidden");
   requestAnimationFrame(() => modal.classList.add("show"));
@@ -1154,11 +1156,14 @@ function updateBmmHasil(){
   hasilEl.innerHTML = jumlah > 0
     ? `Harga per ${esc(satuan)}: <b>Rp ${hitungHargaManual().toFixed(2)}</b>`
     : `Isi harga & jumlah dulu buat lihat harga per ${esc(satuan)}`;
+  const pakaiLabel = $("#bmm-pakai-label");
+  if (pakaiLabel) pakaiLabel.textContent = `Jumlah pemakaian di resep ini (${satuan})`;
 }
 async function simpanBahanManual(){
   const nama = $("#bmm-nama").value.trim();
   const jumlah = parseFloat($("#bmm-jumlah").value) || 0;
   const satuan = $("#bmm-satuan").value;
+  const qtyPakai = parseFloat($("#bmm-pakai").value) || 0;
   const harga = hitungHargaManual();
   if (!nama){ toast("Nama bahan wajib diisi"); return; }
   if (jumlah <= 0){ toast("Jumlah didapat harus lebih dari 0"); return; }
@@ -1166,7 +1171,7 @@ async function simpanBahanManual(){
   if (error){ toast("Gagal simpan bahan manual"); return; }
   await loadManual();
   const nn = nama.toLowerCase().trim();
-  formBahan.push({ nama, nama_normal: nn, harga, sumber: "manual", konv: { isi: 1, unit: satuan }, qty: 0, override: null, hargaBeliOverride: null });
+  formBahan.push({ nama, nama_normal: nn, harga, sumber: "manual", konv: { isi: 1, unit: satuan }, qty: qtyPakai, override: null, hargaBeliOverride: null });
   renderFormBahan(); recalc();
   tutupBahanManualModal();
   toast("Bahan manual ditambahkan");
