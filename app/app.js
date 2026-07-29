@@ -278,7 +278,7 @@ async function loadKonversi(){
 async function loadManual(){
   const { data } = await sb.from("material_manual").select("*");
   manualList = (data || []).map(r => ({
-    nama: r.nama, nama_normal: (r.nama || "").toLowerCase().trim(),
+    id: r.id, nama: r.nama, nama_normal: (r.nama || "").toLowerCase().trim(),
     harga: Number(r.harga_per_satuan) || 0, satuan: r.satuan, sumber: "manual",
   }));
 }
@@ -486,6 +486,7 @@ let currentTab = "list";
 const NAV_ITEMS = [
   { k:"dash", t:"Dashboard", ic:'<rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/>' },
   { k:"list", t:"Produk", ic:'<path d="M3 6h18M3 12h18M3 18h18"/>' },
+  { k:"bahan", t:"Bahan", ic:'<path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><path d="M3.27 6.96L12 12.01l8.73-5.05M12 22.08V12"/>' },
   { k:"kondimen", t:"Kondimen", ic:'<path d="M12 2l2 5 5 .5-4 3.5 1 5-4-2.5L8 19l1-5-4-3.5 5-.5z"/>' },
   { k:"pengaturan", t:"Pengaturan", ic:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>' },
 ];
@@ -493,6 +494,7 @@ const NAV_ITEMS = [
 // menyorot "Produk"; Kelola disorot "Kondimen" atau "Pengaturan").
 function activeNav(){
   if (currentTab === "dash") return "dash";
+  if (currentTab === "bahan") return "bahan";
   if (currentTab === "kelola") return kelolaSub === "kondimen" ? "kondimen" : "pengaturan";
   return "list";
 }
@@ -507,7 +509,7 @@ function bindNav(el){
     const n = it.dataset.nav;
     if (n === "kondimen"){ kelolaSub = "kondimen"; kondimenEdit = null; switchTab("kelola"); }
     else if (n === "pengaturan"){ if (kelolaSub === "kondimen") kelolaSub = "kategori"; switchTab("kelola"); }
-    else switchTab(n); // dash, list
+    else switchTab(n); // dash, list, bahan
   }));
 }
 
@@ -537,8 +539,8 @@ function renderSidebar(){
     return;
   }
 
-  // Dashboard: cukup nav (tidak ada daftar kategori/pengaturan)
-  if (currentTab === "dash"){
+  // Dashboard & Bahan: cukup nav (tidak ada daftar kategori/pengaturan)
+  if (currentTab === "dash" || currentTab === "bahan"){
     el.innerHTML = nav;
     bindNav(el);
     return;
@@ -2035,13 +2037,223 @@ function switchTab(tab){
   $("#viewList").classList.toggle("hidden", tab !== "list");
   $("#viewAdd").classList.toggle("hidden", tab !== "add");
   $("#viewKelola").classList.toggle("hidden", tab !== "kelola");
+  $("#viewBahan") && $("#viewBahan").classList.toggle("hidden", tab !== "bahan");
   // Semua tab sekarang pakai app-layout (sidebar + konten) -- struktur & ukuran
   // sama di semua halaman. Navigasi antar-tab ada di sidebar (navMenuHtml),
   // di-render ulang tiap switchTab supaya state aktif ikut update.
   if (tab === "add" && !editingProdukId) newForm();
   if (tab === "kelola") renderKelola();
   else if (tab === "dash") renderDashboard();
+  else if (tab === "bahan") renderBahanView();
   renderSidebar();
+}
+
+// =====================================================================
+//  BAHAN: katalog semua material (acuan Cashflow + manual) + edit/hapus
+// =====================================================================
+let bahanCari = "";
+let bahanFilterSumber = ""; // "" | "gudang" | "harian" | "manual"
+
+function bahanCatalog(){
+  const acuan = hargaAcuan.map(b => {
+    const konv = konversiMap[b.nama_normal] || null;
+    const harga = Number(b.harga) || 0;
+    return {
+      tipe: "acuan", nama: b.nama, nama_normal: b.nama_normal, sumber: b.sumber || "acuan",
+      hargaBeli: harga, isi: konv ? konv.isi : null, unit: konv ? konv.unit : null,
+      perUnit: konv ? harga / (konv.isi || 1) : null, tanggal: b.tanggal || null,
+    };
+  });
+  const manual = manualList.map(b => ({
+    tipe: "manual", id: b.id, nama: b.nama, nama_normal: b.nama_normal, sumber: "manual",
+    hargaBeli: null, isi: 1, unit: b.satuan, perUnit: Number(b.harga) || 0, tanggal: null,
+  }));
+  return [...acuan, ...manual];
+}
+
+// heuristik "isi kemungkinan salah" — harga per unit tidak masuk akal
+function bahanCuriga(b){
+  if (b.perUnit == null) return false;
+  if ((b.unit === "gr" || b.unit === "ml") && b.perUnit > 800) return true;
+  if (b.unit === "pcs" && b.perUnit > 4000) return true;
+  if (b.hargaBeli && b.isi && b.isi < 50 && b.hargaBeli > 20000) return true;
+  return false;
+}
+function bahanSumberBadge(b){
+  const s = (b.sumber || "").toLowerCase();
+  if (s.includes("gudang") || s.includes("warehouse")) return `<span class="src src-gudang">Gudang</span>`;
+  if (s.includes("harian")) return `<span class="src src-harian">Harian</span>`;
+  if (b.tipe === "manual") return `<span class="src src-manual">Manual</span>`;
+  return `<span class="src">${esc(b.sumber || "Acuan")}</span>`;
+}
+
+function renderBahanView(){
+  const v = $("#viewBahan");
+  if (!v) return;
+  let list = bahanCatalog();
+  if (bahanCari) list = list.filter(b => b.nama.toLowerCase().includes(bahanCari.toLowerCase()));
+  if (bahanFilterSumber === "manual") list = list.filter(b => b.tipe === "manual");
+  else if (bahanFilterSumber) list = list.filter(b => (b.sumber || "").toLowerCase().includes(bahanFilterSumber));
+  list.sort((a, b) => a.nama.localeCompare(b.nama));
+  const curigaCount = bahanCatalog().filter(bahanCuriga).length;
+
+  const rows = list.map(b => {
+    const curiga = bahanCuriga(b);
+    const key = b.tipe === "manual" ? b.id : b.nama_normal;
+    const perUnitTxt = b.perUnit == null
+      ? `<span class="sub-note" style="color:var(--amber);display:inline;">belum diatur</span>`
+      : `<span class="num-val">${b.perUnit.toFixed(2)}</span><span class="sub-note" style="display:inline;"> /${esc(b.unit || "")}</span>`;
+    return `<tr>
+      <td><span class="pnm">${esc(b.nama)}</span>${curiga ? ' <span class="tanda-usang" title="Harga per unit janggal — cek isi per kemasan"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h16.9a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg></span>' : ''}</td>
+      <td>${bahanSumberBadge(b)}</td>
+      <td class="r"><span class="num-val">${b.hargaBeli != null ? rp(b.hargaBeli) : "—"}</span></td>
+      <td class="r">${b.isi != null ? b.isi : "—"}</td>
+      <td>${esc(b.unit || "—")}</td>
+      <td class="r">${perUnitTxt}</td>
+      <td class="r">
+        <button class="prod-dup" data-bedit="${esc(key)}" data-btipe="${b.tipe}" title="Edit"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.1 2.1 0 013 3L12 15l-4 1 1-4z"/></svg></button>
+        <button class="prod-dup" data-bdel="${esc(key)}" data-btipe="${b.tipe}" title="Hapus"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14z"/><path d="M10 11v6M14 11v6"/></svg></button>
+      </td>
+    </tr>`;
+  }).join("");
+
+  const chip = (k, t) => `<button class="bahan-fchip ${bahanFilterSumber === k ? "active" : ""}" data-fsumber="${k}">${t}</button>`;
+  v.innerHTML = `
+    <div id="bahanTop">
+      <div class="sub-hero">
+        <div class="sub-hero-clip"><div class="sub-hero-grid"></div><div class="sub-hero-glow"></div></div>
+        <div class="sub-hero-inner">
+          <div class="sub-hero-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><path d="M3.27 6.96L12 12.01l8.73-5.05M12 22.08V12"/></svg></div>
+          <div>
+            <div class="sub-hero-badge"><span class="dot"></span> Katalog Material</div>
+            <h1 class="sub-hero-title">Bahan</h1>
+            <p class="sub-hero-sub">Semua material beserta harga & satuannya${curigaCount ? ` · <b>${curigaCount} perlu dicek</b>` : ""}.</p>
+          </div>
+        </div>
+      </div>
+      <div class="prod-toolbar">
+        <div class="search-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg><input type="text" id="cariBahan" placeholder="Cari bahan…" value="${esc(bahanCari)}">${bahanCari ? '<button id="cariBahanClear" aria-label="Hapus">&times;</button>' : ''}</div>
+        <button class="btn btn-sm btn-primary" id="btnTambahBahanManual"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg> Bahan manual</button>
+      </div>
+      <div class="bahan-filter">${chip("", "Semua")}${chip("gudang", "Gudang")}${chip("harian", "Harian")}${chip("manual", "Manual")}</div>
+    </div>
+    <div id="bahanList">
+      <div class="prod-card"><div class="prod-table-wrap"><table class="prod-table">
+        <thead><tr><th>Bahan</th><th>Sumber</th><th class="r">Harga/kemasan</th><th class="r">Isi</th><th>Satuan</th><th class="r">Harga/unit</th><th></th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="7"><div class="empty" style="padding:24px;">Tidak ada bahan.</div></td></tr>'}</tbody>
+      </table></div></div>
+    </div>`;
+
+  const ci = $("#cariBahan");
+  if (ci) ci.addEventListener("input", (e) => { bahanCari = e.target.value; const pos = e.target.selectionStart; renderBahanView(); const again = $("#cariBahan"); if (again){ again.focus(); again.setSelectionRange(pos, pos); } });
+  const cc = $("#cariBahanClear"); if (cc) cc.addEventListener("click", () => { bahanCari = ""; renderBahanView(); });
+  $all("[data-fsumber]", v).forEach(b => b.addEventListener("click", () => { bahanFilterSumber = b.dataset.fsumber; renderBahanView(); }));
+  const tm = $("#btnTambahBahanManual"); if (tm) tm.addEventListener("click", () => bukaMaterialModal({ tipe: "manual", id: null, nama: "", unit: "pcs", perUnit: 0 }));
+  $all("[data-bedit]", v).forEach(btn => btn.addEventListener("click", () => {
+    const tipe = btn.dataset.btipe, key = btn.dataset.bedit;
+    const b = bahanCatalog().find(x => x.tipe === tipe && (x.tipe === "manual" ? x.id : x.nama_normal) === key);
+    if (b) bukaMaterialModal(b);
+  }));
+  $all("[data-bdel]", v).forEach(btn => btn.addEventListener("click", () => {
+    const tipe = btn.dataset.btipe, key = btn.dataset.bdel;
+    const b = bahanCatalog().find(x => x.tipe === tipe && (x.tipe === "manual" ? x.id : x.nama_normal) === key);
+    if (b) hapusMaterial(b);
+  }));
+}
+
+function bukaMaterialModal(b){
+  let modal = $("#materialModal");
+  if (!modal){
+    modal = document.createElement("div");
+    modal.id = "materialModal";
+    modal.className = "dash-modal hidden";
+    modal.innerHTML = `<div class="dm-backdrop"></div>
+      <div class="dm-panel" style="max-width:420px;">
+        <div class="dm-head"><h3 id="mmJudul"></h3><button class="icon-btn" id="mmClose" aria-label="Tutup"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
+        <div class="dm-body" id="mmBody"></div>
+      </div>`;
+    document.body.appendChild(modal);
+    modal.querySelector(".dm-backdrop").addEventListener("click", () => modal.classList.add("hidden"));
+    modal.querySelector("#mmClose").addEventListener("click", () => modal.classList.add("hidden"));
+  }
+  renderMaterialModalBody(b);
+  modal.classList.remove("hidden");
+  requestAnimationFrame(() => modal.classList.add("show"));
+}
+
+function renderMaterialModalBody(b){
+  $("#mmJudul").textContent = b.tipe === "manual" ? (b.id ? "Edit — " + b.nama : "Bahan manual baru") : "Edit — " + b.nama;
+  const body = $("#mmBody");
+  if (b.tipe === "manual"){
+    body.innerHTML = `
+      <div class="field"><label>Nama bahan</label><input type="text" id="mm-nama" value="${esc(b.nama)}" placeholder="mis. Saus sambal botol"></div>
+      <div class="field"><label>Harga per satuan (Rp)</label><input type="number" id="mm-harga" value="${b.perUnit || ""}"></div>
+      <div class="field"><label>Satuan</label><select id="mm-satuan">${satuanOptionsHtml(b.unit || "pcs")}</select></div>
+      <button class="btn btn-primary btn-block" id="mm-simpan" style="margin-top:6px;">Simpan</button>`;
+    $("#mm-simpan").addEventListener("click", async () => {
+      const nama = $("#mm-nama").value.trim();
+      const harga = parseFloat($("#mm-harga").value) || 0;
+      const satuan = $("#mm-satuan").value;
+      if (!nama){ toast("Nama bahan wajib diisi"); return; }
+      const btn = $("#mm-simpan"); btn.disabled = true; btn.textContent = "Menyimpan…";
+      let err;
+      if (b.id){ ({ error: err } = await sb.from("material_manual").update({ nama, harga_per_satuan: harga, satuan }).eq("id", b.id)); }
+      else { ({ error: err } = await sb.from("material_manual").insert({ nama, harga_per_satuan: harga, satuan })); }
+      if (err){ toast("Gagal menyimpan"); console.error(err); btn.disabled = false; btn.textContent = "Simpan"; return; }
+      await loadManual();
+      $("#materialModal").classList.add("hidden");
+      renderBahanView();
+      toast("Bahan disimpan");
+    });
+  } else {
+    const isiNow = b.isi != null ? b.isi : "";
+    body.innerHTML = `
+      <div class="field"><label>Harga beli <small>dari Cashflow · tidak bisa diubah di sini</small></label><input type="text" value="${rp(b.hargaBeli)} / kemasan" disabled></div>
+      <div class="field"><label>Isi per kemasan & satuan <small>${rp(b.hargaBeli)} untuk berapa?</small></label>
+        <div style="display:flex;gap:8px;"><input type="number" id="mm-isi" value="${isiNow}" placeholder="mis. 1000" style="flex:1;"><select id="mm-satuan" style="width:120px;">${satuanOptionsHtml(b.unit || "gr")}</select></div></div>
+      <div class="bmm-hasil" id="mm-hasil"></div>
+      <button class="btn btn-primary btn-block" id="mm-simpan" style="margin-top:6px;">Simpan</button>`;
+    const hitung = () => {
+      const isi = parseFloat($("#mm-isi").value);
+      const el = $("#mm-hasil");
+      if (isi > 0){ el.className = "bmm-hasil filled"; el.innerHTML = `<b>${(b.hargaBeli / isi).toFixed(2)}</b> per ${esc($("#mm-satuan").value)} <span style="opacity:.7">(${rp(b.hargaBeli)} ÷ ${isi})</span>`; }
+      else { el.className = "bmm-hasil"; el.textContent = "Isi jumlah per kemasan dulu"; }
+    };
+    hitung();
+    $("#mm-isi").addEventListener("input", hitung);
+    $("#mm-satuan").addEventListener("change", hitung);
+    $("#mm-simpan").addEventListener("click", async () => {
+      const isi = parseFloat($("#mm-isi").value);
+      const satuan = $("#mm-satuan").value;
+      if (!(isi > 0)){ toast("Isi per kemasan harus lebih dari 0"); return; }
+      const btn = $("#mm-simpan"); btn.disabled = true; btn.textContent = "Menyimpan…";
+      const { error } = await sb.from("material_konversi").upsert({ nama_normal: b.nama_normal, nama: b.nama, isi_per_kemasan: isi, satuan_pakai: satuan }, { onConflict: "nama_normal" });
+      if (error){ toast("Gagal menyimpan"); console.error(error); btn.disabled = false; btn.textContent = "Simpan"; return; }
+      konversiMap[b.nama_normal] = { isi, unit: satuan };
+      $("#materialModal").classList.add("hidden");
+      renderBahanView();
+      toast("Satuan bahan disimpan");
+    });
+  }
+}
+
+async function hapusMaterial(b){
+  if (b.tipe === "manual"){
+    if (!confirm(`Hapus bahan manual "${b.nama}"?`)) return;
+    const { error } = await sb.from("material_manual").delete().eq("id", b.id);
+    if (error){ toast("Gagal menghapus"); console.error(error); return; }
+    await loadManual();
+    renderBahanView();
+    toast("Bahan dihapus");
+  } else {
+    if (b.isi == null){ toast("Bahan ini belum ada pengaturan satuan"); return; }
+    if (!confirm(`Reset satuan "${b.nama}"?\n\nBahan tetap ada (dari Cashflow), tapi isi & satuannya dikosongkan — nanti perlu diatur ulang lewat "Lengkapi satuan".`)) return;
+    const { error } = await sb.from("material_konversi").delete().eq("nama_normal", b.nama_normal);
+    if (error){ toast("Gagal menghapus"); console.error(error); return; }
+    delete konversiMap[b.nama_normal];
+    renderBahanView();
+    toast("Satuan bahan direset");
+  }
 }
 
 // ---------------------------------------------------------------------

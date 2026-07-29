@@ -149,6 +149,15 @@
   .si-top{ display:flex; justify-content:space-between; align-items:center; gap:8px; }
   .si-nm{ font-weight:600; color:var(--ink); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .src{ font-size:10px; font-weight:700; padding:2px 7px; border-radius:5px; background:var(--panel); color:var(--ink-soft); text-transform:uppercase; letter-spacing:0.02em; white-space:nowrap; flex-shrink:0; }
+  .src-gudang{ background:var(--green-light); color:var(--green-dark); }
+  .src-harian{ background:#EAF1FB; color:#2A5CA8; }
+  .src-manual{ background:var(--amber-light); color:var(--amber); }
+  [data-theme="dark"] .src-harian{ background:#1A2436; color:#8FB4E8; }
+  /* Halaman Bahan: filter chip sumber */
+  .bahan-filter{ display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap; }
+  .bahan-fchip{ font-size:13px; font-weight:600; padding:7px 14px; border-radius:999px; border:1px solid var(--line); background:var(--surface); color:var(--ink-soft); cursor:pointer; transition:all .12s; }
+  .bahan-fchip:hover{ border-color:var(--green); color:var(--green); }
+  .bahan-fchip.active{ background:var(--green); border-color:var(--green); color:#fff; }
   .si-info{ margin-top:3px; font-size:11.5px; color:var(--ink-soft); display:flex; align-items:center; gap:7px; flex-wrap:wrap; }
   .si-info b{ color:var(--green-dark); font-size:12.5px; }
   .si-beli{ color:var(--ink-faint); }
@@ -495,6 +504,10 @@
        sticky (bukan flex-shrink terpisah) supaya tak perlu bungkus ulang
        template form yang besar; sudah diuji jalan walau ada animasi fadeUp. */
     #viewAdd > .sub-hero, #viewKelola > .sub-hero{ position:sticky; top:0; z-index:5; }
+    /* Halaman Bahan: hero+toolbar diam, tabel scroll (pola sama #viewList). */
+    #viewBahan{ flex:1; min-height:0; display:flex; flex-direction:column; overflow:hidden; }
+    #bahanTop{ flex-shrink:0; }
+    #bahanList{ flex:1; min-height:0; overflow-y:auto; }
   }
   /* Menu navigasi utama di atas sidebar (Dashboard/Produk/Tambah/Kelola) */
   .side-nav{ display:flex; flex-direction:column; gap:3px; }
@@ -814,6 +827,7 @@
           </div>
           <div id="viewAdd" class="hidden"></div>
           <div id="viewKelola" class="hidden"></div>
+          <div id="viewBahan" class="hidden"></div>
         </main>
       </div>
     </div>

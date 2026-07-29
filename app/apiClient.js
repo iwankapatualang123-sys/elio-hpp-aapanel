@@ -173,7 +173,27 @@
   async function handleMaterialKonversi(state) {
     if (state.method === "select") return apiFetch("/api/material-konversi");
     if (state.method === "upsert") return apiFetch("/api/material-konversi", { method: "POST", body: toBackendBody(state.body) });
+    if (state.method === "delete") {
+      const nn = eqVal(state, "nama_normal");
+      return apiFetch(`/api/material-konversi/${encodeURIComponent(nn)}`, { method: "DELETE" });
+    }
     throw new Error(`material_konversi: operasi ${state.method} tidak didukung`);
+  }
+
+  // material_manual: CRUD penuh (dipakai halaman Bahan). Beda dari simpleTable
+  // yg cuma select+insert, ini juga update (PUT /:id) & delete (DELETE /:id).
+  async function handleMaterialManual(state) {
+    if (state.method === "select") return apiFetch("/api/material-manual");
+    if (state.method === "insert") return apiFetch("/api/material-manual", { method: "POST", body: toBackendBody(state.body) });
+    if (state.method === "update") {
+      const id = eqVal(state, "id");
+      return apiFetch(`/api/material-manual/${encodeURIComponent(id)}`, { method: "PUT", body: toBackendBody(state.body) });
+    }
+    if (state.method === "delete") {
+      const id = eqVal(state, "id");
+      return apiFetch(`/api/material-manual/${encodeURIComponent(id)}`, { method: "DELETE" });
+    }
+    throw new Error(`material_manual: operasi ${state.method} tidak didukung`);
   }
 
   // Beda dari resep_bahan/biaya_operasional_produk: riwayat HPP cuma pernah
@@ -220,7 +240,7 @@
     resep_bahan: childOfProdukTable("/api/resep-bahan"),
     biaya_operasional_produk: childOfProdukTable("/api/biaya-operasional-produk"),
     produk_hpp_history: { execute: handleProdukHppHistory },
-    material_manual: simpleTable("/api/material-manual"),
+    material_manual: { execute: handleMaterialManual },
     material_konversi: { execute: handleMaterialKonversi },
     harga_acuan_material: { execute: handleHargaAcuan },
     produk_log: { execute: handleProdukLog },

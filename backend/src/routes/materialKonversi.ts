@@ -33,4 +33,13 @@ router.post('/', async (req, res) => {
   res.json(row);
 });
 
+// Hapus konversi satuan sebuah material (dipakai halaman Bahan -> "reset satuan").
+// Bahan acuan sendiri datang dari Cashflow (tidak bisa dihapus dari sini); yang
+// dihapus cuma baris isi/satuan-nya, jadi material balik butuh "Lengkapi satuan".
+router.delete('/:namaNormal', async (req, res) => {
+  const namaNormal = decodeURIComponent(req.params.namaNormal);
+  await prisma.materialKonversi.deleteMany({ where: { namaNormal } });
+  res.json({ ok: true });
+});
+
 export default router;
