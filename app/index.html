@@ -488,6 +488,11 @@
     #prodListTop{ flex-shrink:0; }
     #prodList{ flex:1; min-height:0; overflow-y:auto; }
     #viewAdd, #viewKelola{ flex:1; min-height:0; overflow-y:auto; }
+    /* Sub-hero ("Edit Produk"/"Kondimen"/"Pengaturan") DIAM di atas saat form
+       di-scroll -- konsisten dgn #prodHero di halaman Produk yang juga diam.
+       sticky (bukan flex-shrink terpisah) supaya tak perlu bungkus ulang
+       template form yang besar; sudah diuji jalan walau ada animasi fadeUp. */
+    #viewAdd > .sub-hero, #viewKelola > .sub-hero{ position:sticky; top:0; z-index:5; }
   }
   /* Menu navigasi utama di atas sidebar (Dashboard/Produk/Tambah/Kelola) */
   .side-nav{ display:flex; flex-direction:column; gap:3px; }
