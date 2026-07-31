@@ -39,6 +39,14 @@
   .kv .v{ text-align:right; }
   .kv .v .nm{ font-size:13px; font-weight:700; }
   .kv .v .sub{ font-size:11px; color:var(--ink-soft); }
+  .tksec{ margin-top:12px; padding-top:10px; border-top:1px solid var(--line); }
+  .tktitle{ font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--ink-faint); margin-bottom:6px; }
+  .tkrow{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:5px 0; }
+  .tknm{ font-size:12px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .tkb{ font-size:11px; font-weight:800; padding:2px 8px; border-radius:6px; white-space:nowrap; flex-shrink:0; }
+  .tknaik{ background:var(--red-light); color:var(--red); }
+  .tkturun{ background:var(--green-light); color:#1E7D46; }
+  .tksama{ background:var(--bg); color:var(--ink-faint); font-weight:600; }
   .foot{ font-size:10px; color:var(--ink-faint); text-align:right; margin-top:10px; }
   .state{ padding:26px 16px; text-align:center; color:var(--ink-soft); font-size:13px; }
   .skel{ animation:pulse 1.2s ease-in-out infinite; }
@@ -76,6 +84,18 @@
     if (d.rugi)  pills += '<span class="pill rugi">Rugi '+d.rugi+'</span>';
     var upd = "";
     try { upd = new Date(d.updatedAt).toLocaleString("id-ID",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}); } catch(e){}
+    var trenHtml = "";
+    if (d.trenKategori && d.trenKategori.length){
+      trenHtml = '<div class="tksec"><div class="tktitle">Tren HPP per kategori</div>'
+        + d.trenKategori.map(function(t){
+            var badge, cls;
+            if (t.persen == null){ badge = "—"; cls = "tksama"; }
+            else if (t.delta === 0){ badge = "tetap"; cls = "tksama"; }
+            else { cls = t.delta > 0 ? "tknaik" : "tkturun"; badge = (t.delta > 0 ? "▲" : "▼")+" "+Math.abs(t.persen)+"%"; }
+            return '<div class="tkrow"><span class="tknm">'+esc(t.nama)+'</span><span class="tkb '+cls+'">'+badge+'</span></div>';
+          }).join("")
+        + '</div>';
+    }
     body.innerHTML =
       '<div class="row3">'
         + '<div class="tile"><div class="n">'+d.total+'</div><div class="l">Produk</div></div>'
@@ -85,6 +105,7 @@
       + '<div class="margin"><span class="big" style="color:'+mColor+'">'+d.avgMargin+'%</span><span class="lbl">rata-rata margin</span><span class="pills">'+pills+'</span></div>'
       + (d.palingUntung ? '<div class="kv"><span class="k">Paling untung</span><span class="v"><div class="nm">'+esc(d.palingUntung.nama)+'</div><div class="sub">laba '+rp(d.palingUntung.laba)+'/porsi</div></span></div>' : '')
       + (d.hppTertinggi ? '<div class="kv"><span class="k">HPP tertinggi</span><span class="v"><div class="nm">'+esc(d.hppTertinggi.nama)+'</div><div class="sub">'+rp(d.hppTertinggi.hpp)+'/porsi</div></span></div>' : '')
+      + trenHtml
       + (upd ? '<div class="foot">diperbarui '+upd+'</div>' : '');
   }
 

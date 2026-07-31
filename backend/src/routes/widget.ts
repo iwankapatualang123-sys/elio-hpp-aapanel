@@ -36,6 +36,45 @@ router.get('/summary', async (req, res) => {
   const untung = terisi.length ? [...terisi].sort((a, b) => laba(b) - laba(a))[0] : null;
   const mahal = terisi.length ? [...terisi].sort((a, b) => Number(b.hppTerakhir) - Number(a.hppTerakhir))[0] : null;
 
+  // --- Tren HPP per kategori (sama logika dgn Dashboard: jumlah HPP sekarang
+  // vs sebelumnya dari produk yang punya >=2 riwayat) ---
+  const kategori = await prisma.kategoriProduk.findMany({ where: { isDeleted: false } });
+  const katById: Record<string, (typeof kategori)[number]> = {};
+  kategori.forEach((k) => { katById[k.id] = k; });
+  const katPathNoRoot = (id: string | null): string => {
+    const parts: string[] = [];
+    let cur = id ? katById[id] : undefined;
+    while (cur) { if (cur.level > 1) parts.unshift(cur.nama); cur = cur.parentId ? katById[cur.parentId] : undefined; }
+    return parts.join(' › ') || 'Tanpa kategori';
+  };
+
+  const hist = terisi.length
+    ? await prisma.produkHppHistory.findMany({ where: { produkId: { in: produk.map((p) => p.id) } }, orderBy: { createdAt: 'desc' } })
+    : [];
+  const perProduk: Record<string, typeof hist> = {};
+  hist.forEach((h) => { (perProduk[h.produkId] = perProduk[h.produkId] || []).push(h); });
+
+  const grup: Record<string, { key: string; jumlah: number; avgTot: number; now: number; prev: number }> = {};
+  produk.forEach((p) => {
+    if (Number(p.hppTerakhir) <= 0) return;
+    const key = p.kategoriId ? katPathNoRoot(p.kategoriId) : 'Tanpa kategori';
+    const g = grup[key] || (grup[key] = { key, jumlah: 0, avgTot: 0, now: 0, prev: 0 });
+    g.jumlah++;
+    g.avgTot += Number(p.hppTerakhir);
+    const h = perProduk[p.id] || [];
+    if (h.length >= 2 && Number(h[1].hpp) > 0) { g.now += Number(h[0].hpp); g.prev += Number(h[1].hpp); }
+  });
+  const trenKategori = Object.values(grup).map((g) => {
+    const delta = g.now - g.prev;
+    return {
+      nama: g.key,
+      jumlah: g.jumlah,
+      avgHpp: g.jumlah ? Math.round(g.avgTot / g.jumlah) : 0,
+      delta: Math.round(delta),
+      persen: g.prev > 0 ? Math.round((delta / g.prev) * 100) : null
+    };
+  }).sort((a, b) => a.nama.localeCompare(b.nama));
+
   res.json({
     total,
     terisi: terisi.length,
@@ -46,6 +85,7 @@ router.get('/summary', async (req, res) => {
     rugi,
     palingUntung: untung ? { nama: untung.nama, laba: Math.round(laba(untung)) } : null,
     hppTertinggi: mahal ? { nama: mahal.nama, hpp: Math.round(Number(mahal.hppTerakhir)) } : null,
+    trenKategori,
     updatedAt: new Date().toISOString()
   });
 });
