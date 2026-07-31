@@ -630,6 +630,17 @@
   .lead-v{ font-size:14px; font-weight:800; }
   .lead-v.good{ color:#1E7D46; }
   .lead-v.bad{ color:var(--red); }
+  /* TREN HPP PER KATEGORI */
+  .tren-kat{ display:flex; flex-direction:column; }
+  .tk-row{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding:11px 0; border-bottom:1px solid var(--line); }
+  .tk-row:last-child{ border-bottom:0; }
+  .tk-info{ min-width:0; }
+  .tk-nama{ display:block; font-size:14px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .tk-sub{ display:block; font-size:11px; color:var(--ink-faint); margin-top:2px; }
+  .tk-badge{ font-size:12px; font-weight:800; padding:5px 11px; border-radius:8px; white-space:nowrap; flex-shrink:0; }
+  .tk-naik{ background:var(--red-light); color:var(--red); }
+  .tk-turun{ background:var(--green-light); color:#1E7D46; }
+  .tk-sama{ background:var(--panel); color:var(--ink-faint); font-weight:600; }
   /* TAB CABANG */
   .cabang-tabs{ display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px; }
   .cab-tab{ display:inline-flex; align-items:center; gap:7px; padding:8px 14px; border:1px solid var(--line); background:var(--surface); border-radius:9px; font-size:13px; font-weight:700; color:var(--ink-soft); cursor:pointer; box-shadow:var(--shadow-sm); transition:all .14s; }

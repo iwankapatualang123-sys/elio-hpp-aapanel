@@ -311,7 +311,8 @@ async function hitungIndikatorProduk(){
       const now = Number(h[0].hpp), prev = Number(h[1].hpp);
       p._tren = now > prev ? "naik" : now < prev ? "turun" : "sama";
       p._trenPersen = prev ? Math.round((now - prev) / prev * 100) : 0;
-    } else p._tren = null;
+      p._hppNow = now; p._hppPrev = prev; // dipakai agregasi tren per kategori
+    } else { p._tren = null; p._hppNow = null; p._hppPrev = null; }
     // bahan usang
     const rs = resepPer[p.id] || [];
     let adaUsang = false;
@@ -1863,6 +1864,29 @@ function barChartSvg(rows, maxVal){
     </div>`).join("") + `</div>`;
 }
 
+// Agregasi tren HPP per kategori (path tanpa FNB): jumlahkan HPP sekarang vs
+// sebelumnya dari produk yang punya >=2 riwayat -> naik/turun berapa % & Rp.
+// Produk yang baru sekali dihitung (1 riwayat) tidak punya "sebelumnya",
+// jadi tidak ikut tren (kategorinya tampil "belum ada riwayat").
+function trenHppKategori(){
+  const grup = {};
+  produkFokus().forEach(p => {
+    if (produkBelumDiisi(p)) return;
+    const key = p.kategori_id ? katPathNoRoot(p.kategori_id) : "Tanpa kategori";
+    const g = grup[key] || (grup[key] = { key, jumlah: 0, avgTot: 0, now: 0, prev: 0, withTren: 0 });
+    g.jumlah++;
+    g.avgTot += Number(p.hpp_terakhir) || 0;
+    if (p._hppPrev != null && p._hppNow != null){ g.now += p._hppNow; g.prev += p._hppPrev; g.withTren++; }
+  });
+  return Object.values(grup).map(g => {
+    const delta = g.now - g.prev;
+    return {
+      key: g.key, jumlah: g.jumlah, avgHpp: g.jumlah ? Math.round(g.avgTot / g.jumlah) : 0,
+      delta: Math.round(delta), persen: g.prev > 0 ? Math.round(delta / g.prev * 100) : null, withTren: g.withTren,
+    };
+  }).sort((a, b) => a.key.localeCompare(b.key));
+}
+
 function renderDashboard(){
   const v = $("#viewDash");
   if (!v) return;
@@ -1898,6 +1922,7 @@ function renderDashboard(){
 
   const untung = [...terisi].sort((a,b)=>(Number(b.harga_jual_disarankan)-Number(b.hpp_terakhir))-(Number(a.harga_jual_disarankan)-Number(a.hpp_terakhir))).slice(0,5);
   const rugiList = [...terisi].filter(p=>marginProduk(p)<0).sort((a,b)=>marginProduk(a)-marginProduk(b)).slice(0,5);
+  const trenKat = trenHppKategori();
 
   v.innerHTML = `
     <div class="dash-hero">
@@ -1939,6 +1964,23 @@ function renderDashboard(){
         <h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18M7 16l4-4 3 3 5-6"/></svg>Produk per kategori</h2>
         ${katRows.some(r=>r.val) ? barChartSvg(katRows) : '<div class="empty" style="padding:20px;">Belum ada data.</div>'}
       </div>
+    </div>
+
+    <div class="card">
+      <h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 6l-9.5 9.5-5-5L1 18"/><path d="M17 6h6v6"/></svg>Tren HPP per kategori</h2>
+      <p style="font-size:12px;color:var(--ink-faint);margin:-6px 0 12px;">Naik/turun HPP dibanding perhitungan sebelumnya (butuh minimal 2 kali hitung — mis. setelah "Update Harga").</p>
+      ${trenKat.length ? `<div class="tren-kat">` + trenKat.map(t => {
+        const arah = t.persen == null ? "sama" : (t.delta > 0 ? "naik" : t.delta < 0 ? "turun" : "sama");
+        const badge = t.persen == null
+          ? `<span class="tk-badge tk-sama">belum ada riwayat</span>`
+          : (t.delta === 0
+            ? `<span class="tk-badge tk-sama">tetap</span>`
+            : `<span class="tk-badge tk-${arah}">${t.delta > 0 ? "▲" : "▼"} ${Math.abs(t.persen)}% · ${t.delta > 0 ? "+" : "−"}${rp(Math.abs(t.delta))}</span>`);
+        return `<div class="tk-row">
+          <div class="tk-info"><span class="tk-nama">${esc(t.key)}</span><span class="tk-sub">${t.jumlah} produk · rata-rata HPP ${rp(t.avgHpp)}</span></div>
+          ${badge}
+        </div>`;
+      }).join("") + `</div>` : '<div class="empty" style="padding:20px;">Belum ada produk terisi.</div>'}
     </div>
 
     ${filterCabangId ? "" : `<div class="card">
