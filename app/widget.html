@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ringkasan HPP Elio</title>
+<style>
+  :root{
+    --bg:#F2F8F4; --surface:#FFFFFF; --line:#E6EDE8; --ink:#0F1E17; --ink-soft:#5A655F; --ink-faint:#93999A;
+    --green:#0F5132; --green-dark:#0A3D26; --green-light:#E7F3EB; --amber:#8A5A12; --amber-light:#FBF3E4; --red:#9B2C22; --red-light:#F7E7E5;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#0E1512; --surface:#161E1A; --line:#26302B; --ink:#EAF0EC; --ink-soft:#A5B0AA; --ink-faint:#6E7A74; --green:#3FA76C; --green-dark:#2E8656; --green-light:#1A2C22; --amber:#D89A3A; --amber-light:#2A2113; --red:#E06A5C; --red-light:#2E1A18; }
+  }
+  *{ box-sizing:border-box; margin:0; padding:0; }
+  html,body{ font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; background:var(--bg); color:var(--ink); -webkit-font-smoothing:antialiased; }
+  .w{ padding:14px; max-width:520px; margin:0 auto; }
+  .card{ background:var(--surface); border:1px solid var(--line); border-radius:16px; overflow:hidden; box-shadow:0 8px 24px -14px rgba(10,40,25,.25); }
+  .head{ background:linear-gradient(135deg,var(--green-dark),var(--green) 60%,#12603C); color:#fff; padding:14px 16px; display:flex; align-items:center; justify-content:space-between; gap:10px; }
+  .head .t{ font-weight:800; font-size:15px; letter-spacing:-.01em; }
+  .head .s{ font-size:11px; opacity:.8; margin-top:1px; }
+  .head a{ color:#fff; font-size:11px; font-weight:700; text-decoration:none; background:rgba(255,255,255,.16); border:1px solid rgba(255,255,255,.25); padding:5px 10px; border-radius:999px; white-space:nowrap; }
+  .body{ padding:14px 16px; }
+  .row3{ display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:12px; }
+  .tile{ background:var(--green-light); border-radius:11px; padding:10px 12px; }
+  .tile .n{ font-size:22px; font-weight:800; line-height:1; }
+  .tile .l{ font-size:10px; font-weight:600; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.03em; margin-top:5px; }
+  .margin{ display:flex; align-items:baseline; gap:8px; padding:10px 0; border-top:1px solid var(--line); border-bottom:1px solid var(--line); margin-bottom:12px; }
+  .margin .big{ font-size:26px; font-weight:800; }
+  .margin .lbl{ font-size:12px; color:var(--ink-soft); }
+  .pills{ display:flex; gap:6px; margin-left:auto; flex-wrap:wrap; }
+  .pill{ font-size:11px; font-weight:700; padding:3px 9px; border-radius:6px; }
+  .pill.sehat{ background:var(--green-light); color:var(--green-dark); }
+  .pill.tipis{ background:var(--amber-light); color:var(--amber); }
+  .pill.rugi{ background:var(--red-light); color:var(--red); }
+  .kv{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:7px 0; }
+  .kv + .kv{ border-top:1px dashed var(--line); }
+  .kv .k{ font-size:11px; color:var(--ink-faint); text-transform:uppercase; letter-spacing:.03em; }
+  .kv .v{ text-align:right; }
+  .kv .v .nm{ font-size:13px; font-weight:700; }
+  .kv .v .sub{ font-size:11px; color:var(--ink-soft); }
+  .foot{ font-size:10px; color:var(--ink-faint); text-align:right; margin-top:10px; }
+  .state{ padding:26px 16px; text-align:center; color:var(--ink-soft); font-size:13px; }
+  .skel{ animation:pulse 1.2s ease-in-out infinite; }
+  @keyframes pulse{ 0%,100%{opacity:.5} 50%{opacity:1} }
+</style>
+</head>
+<body>
+<div class="w">
+  <div class="card">
+    <div class="head">
+      <div>
+        <div class="t">HPP Elio — FNB</div>
+        <div class="s">Ringkasan harga pokok &amp; margin</div>
+      </div>
+      <a id="openLink" href="https://hpp.eliodigihub.my.id/" target="_blank" rel="noopener">Buka →</a>
+    </div>
+    <div class="body" id="body">
+      <div class="state skel">Memuat ringkasan…</div>
+    </div>
+  </div>
+</div>
+<script>
+(function(){
+  var qs = new URLSearchParams(location.search);
+  var token = qs.get("token") || "";
+  var rp = function(n){ return "Rp " + Math.round(Number(n)||0).toLocaleString("id-ID"); };
+  var esc = function(s){ var d=document.createElement("div"); d.textContent=s==null?"":s; return d.innerHTML; };
+  var body = document.getElementById("body");
+
+  function render(d){
+    var mColor = d.avgMargin >= 50 ? "var(--green)" : (d.avgMargin < 0 ? "var(--red)" : "var(--amber)");
+    var pills = "";
+    if (d.sehat) pills += '<span class="pill sehat">Sehat '+d.sehat+'</span>';
+    if (d.tipis) pills += '<span class="pill tipis">Tipis '+d.tipis+'</span>';
+    if (d.rugi)  pills += '<span class="pill rugi">Rugi '+d.rugi+'</span>';
+    var upd = "";
+    try { upd = new Date(d.updatedAt).toLocaleString("id-ID",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}); } catch(e){}
+    body.innerHTML =
+      '<div class="row3">'
+        + '<div class="tile"><div class="n">'+d.total+'</div><div class="l">Produk</div></div>'
+        + '<div class="tile"><div class="n">'+d.terisi+'</div><div class="l">Sudah diisi</div></div>'
+        + '<div class="tile"><div class="n">'+d.belum+'</div><div class="l">Belum diisi</div></div>'
+      + '</div>'
+      + '<div class="margin"><span class="big" style="color:'+mColor+'">'+d.avgMargin+'%</span><span class="lbl">rata-rata margin</span><span class="pills">'+pills+'</span></div>'
+      + (d.palingUntung ? '<div class="kv"><span class="k">Paling untung</span><span class="v"><div class="nm">'+esc(d.palingUntung.nama)+'</div><div class="sub">laba '+rp(d.palingUntung.laba)+'/porsi</div></span></div>' : '')
+      + (d.hppTertinggi ? '<div class="kv"><span class="k">HPP tertinggi</span><span class="v"><div class="nm">'+esc(d.hppTertinggi.nama)+'</div><div class="sub">'+rp(d.hppTertinggi.hpp)+'/porsi</div></span></div>' : '')
+      + (upd ? '<div class="foot">diperbarui '+upd+'</div>' : '');
+  }
+
+  function load(){
+    if (!token){ body.innerHTML = '<div class="state">Token widget tidak ada di URL.</div>'; return; }
+    fetch("/api/widget/summary?token=" + encodeURIComponent(token), { cache:"no-store" })
+      .then(function(r){ if(!r.ok) throw new Error(r.status===403?"403":"err"); return r.json(); })
+      .then(render)
+      .catch(function(e){
+        body.innerHTML = '<div class="state">'+(String(e.message)==="403"?"Akses ditolak — token widget salah.":"Gagal memuat ringkasan.")+'</div>';
+      });
+  }
+  load();
+  // segarkan tiap 5 menit selama widget terbuka
+  setInterval(load, 5*60*1000);
+})();
+</script>
+</body>
+</html>

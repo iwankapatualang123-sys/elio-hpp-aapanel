@@ -16,6 +16,7 @@ import materialKonversiRoutes from './routes/materialKonversi';
 import materialManualRoutes from './routes/materialManual';
 import kondimenRoutes from './routes/kondimen';
 import hargaAcuanMaterialRoutes from './routes/hargaAcuanMaterial';
+import widgetRoutes from './routes/widget';
 
 const app = express();
 
@@ -36,6 +37,8 @@ app.use('/api/material-konversi', materialKonversiRoutes);
 app.use('/api/material-manual', materialManualRoutes);
 app.use('/api/kondimen', kondimenRoutes);
 app.use('/api/harga-acuan-material', hargaAcuanMaterialRoutes);
+// Read-only, token-protected (bukan requireAuth) -- dipakai widget iframe.
+app.use('/api/widget', widgetRoutes);
 
 // Centralized error handler — any unhandled throw in a route lands here
 // instead of crashing the process or leaking a stack trace to the client.

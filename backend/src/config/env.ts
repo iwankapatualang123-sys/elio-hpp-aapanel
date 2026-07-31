@@ -22,5 +22,9 @@ export const env = {
   // Kosong = fitur harga acuan nonaktif dengan graceful degradation
   // (lihat lib/hargaAcuanClient.ts), bukan error keras — berguna saat dev
   // lokal tanpa akses ke Supabase Elio Cashier.
-  hargaAcuanDatabaseUrl: process.env.HARGA_ACUAN_DATABASE_URL || ''
+  hargaAcuanDatabaseUrl: process.env.HARGA_ACUAN_DATABASE_URL || '',
+  // Token untuk endpoint widget ringkasan read-only (dipakai iframe di aplikasi
+  // lain). BUKAN login — cuma kunci sederhana supaya URL widget tidak bisa
+  // dibuka sembarang orang. Kosong = endpoint widget dimatikan (403).
+  widgetToken: process.env.WIDGET_TOKEN || ''
 };
