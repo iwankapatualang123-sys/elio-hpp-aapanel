@@ -304,6 +304,16 @@ async function hitungIndikatorProduk(){
   const resepPer = {};
   (reseps || []).forEach(r => { (resepPer[r.produk_id] = resepPer[r.produk_id] || []).push(r); });
 
+  // Dibangun sekali di luar loop: dipakai untuk menandai produk yang TIDAK IKUT
+  // hitung ulang otomatis. Sebelumnya ini cuma kelihatan di form resep (setelah
+  // produknya dibuka satu per satu) atau lewat `npm run cek-bahan` di server --
+  // di daftar produk tidak ada tandanya sama sekali, jadi produk yang HPP-nya
+  // beku berbulan-bulan tetap tampil "Sehat" tanpa isyarat apa pun (label Sehat
+  // itu penilaian margin, bukan penilaian kesegaran angka).
+  const acuanSet = new Set(hargaAcuan.map(a => a.nama_normal));
+  const manualSet = new Set(manualList.map(m => m.nama_normal));
+  const kondimenIdSet = new Set(kondimenList.map(k => k.id));
+
   produkList.forEach(p => {
     // tren
     const h = perProduk[p.id] || [];
@@ -322,6 +332,28 @@ async function hitungIndikatorProduk(){
       if (ac && ac.tanggal && infoTanggal(ac.tanggal).lama) adaUsang = true;
     });
     p._bahanUsang = adaUsang;
+
+    // Bahan yang bikin produk ini DILEWATI saat refresh HPP. Aturannya sengaja
+    // mencerminkan cariBahan() di backend/src/jobs/refreshHarga.ts -- kalau
+    // logika di sana berubah, ubah juga di sini, supaya tanda di layar tidak
+    // bertentangan dengan apa yang benar-benar dikerjakan server.
+    const bermasalah = [];
+    rs.forEach(r => {
+      // Harga per satuan dikunci manual -> bahannya tidak perlu dicari.
+      if (r.harga_override !== null && r.harga_override !== undefined) return;
+      const nn = r.bahan_nama_normal;
+      if (nn.startsWith("kondimen:")){
+        if (!kondimenIdSet.has(nn.slice("kondimen:".length))) bermasalah.push(nn + " (kondimen sudah dihapus)");
+        return;
+      }
+      if (acuanSet.has(nn)){
+        if (!konversiMap[nn]) bermasalah.push(nn + " (satuan belum dilengkapi)");
+        return;
+      }
+      if (manualSet.has(nn)) return;
+      bermasalah.push(nn + " (tidak ada lagi di data belanja)");
+    });
+    p._takTerhitung = bermasalah.length ? bermasalah : null;
   });
 }
 
@@ -777,6 +809,11 @@ function renderProdukList(){
       else if (!belum && p._tren === "turun") tren = `<span class="tren tren-turun" title="HPP turun ${Math.abs(p._trenPersen)}% dari sebelumnya">▼ ${Math.abs(p._trenPersen)}%</span>`;
       // tanda bahan usang
       const usang = (!belum && p._bahanUsang) ? `<span class="tanda-usang" title="Ada bahan dengan harga acuan >30 hari — HPP mungkin tidak akurat"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>` : "";
+      // esc() tidak meng-escape tanda kutip ganda, sedangkan ini masuk ke dalam
+      // atribut title="..." -- nama bahan dari data belanja bisa saja memuatnya
+      // (mis. cup 12"), dan itu akan merusak atributnya.
+      const takHitungTitle = p._takTerhitung ? esc(p._takTerhitung.join(", ")).replace(/"/g, "&quot;") : "";
+      const takHitung = p._takTerhitung ? `<span class="tanda-usang" style="color:var(--red);" title="HPP tidak ikut diperbarui otomatis — ${takHitungTitle}"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h16.9a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg></span>` : "";
       const statusHtml = belum
         ? `<span class="status-pill status-belum"><svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h16.9a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>Belum diisi</span>`
         : (st ? `<span class="status-pill ${st.cls}">${st.txt}</span>` : "");
@@ -798,7 +835,7 @@ function renderProdukList(){
       const markup = hppNum > 0 ? Math.round((hargaEfektif - hppNum) / hppNum * 100) : null;
       const updateTgl = infoTanggal(p.updated_at).teks;
       return `<tr class="prod-row ${belum ? "belum" : ""} ${edge}" data-id="${esc(p.id)}">
-        <td><span class="pnm">${esc(p.nama)}</span>${usang}</td>
+        <td><span class="pnm">${esc(p.nama)}</span>${usang}${takHitung}</td>
         <td>${statusHtml}</td>
         <td>
           ${cab ? `<div class="ct-cab">${esc(cab.nama)}</div>` : ""}
