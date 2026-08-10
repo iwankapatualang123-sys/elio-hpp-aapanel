@@ -74,16 +74,28 @@ export async function refreshSemuaHarga(): Promise<HasilRefresh> {
     let total = 0;
     let semuaLengkap = true;
     for (const b of bahanRows) {
-      const konvIsi = b.isiKemasan !== null && b.isiKemasan !== undefined ? Number(b.isiKemasan) : null;
-      if (konvIsi === null) {
-        semuaLengkap = false; // satuan belum dilengkapi -- sama seperti updateSemuaHarga(), jangan diam2 anggap isi 1
+      const override = b.hargaOverride !== null && b.hargaOverride !== undefined ? Number(b.hargaOverride) : null;
+      if (override !== null) {
+        // Harga per satuan dikunci manual -- harga acuan & konversi tidak dipakai.
+        total += override * Number(b.qtyPakai || 0);
+        continue;
+      }
+      // SATU BUKU: isi per kemasan SELALU dari katalog bersama lewat cariBahan()
+      // (material_konversi utk bahan acuan, 1 utk manual & kondimen), PERSIS
+      // seperti aturan produk di bawah. Kolom kondimen_bahan.isi_kemasan sengaja
+      // TIDAK dibaca lagi: dulu salinan itu yang dipakai, jadi koreksi satuan
+      // sebuah bahan tidak pernah sampai ke kondimen yang sudah tersimpan, dan
+      // layar bisa menampilkan angka berbeda dari yang dihitung server.
+      const found = cariBahan(b.bahanNamaNormal);
+      if (!found || found.konvIsi === null) {
+        // Bahan tidak ada di katalog mana pun, atau satuannya belum dilengkapi.
+        // Dulu bahan yang hilang diam-diam dihitung harga 0 -- jadi "gratis",
+        // HPP kondimen terlalu murah, tanpa peringatan apa pun. Sekarang seluruh
+        // kondimen dilewati (nilai lamanya dipertahankan), sama seperti produk.
+        semuaLengkap = false;
         break;
       }
-      const found = cariBahan(b.bahanNamaNormal);
-      const harga = found ? found.harga : 0;
-      const override = b.hargaOverride !== null && b.hargaOverride !== undefined ? Number(b.hargaOverride) : null;
-      const perUnit = override !== null ? override : harga / (konvIsi || 1);
-      total += perUnit * Number(b.qtyPakai || 0);
+      total += (found.harga / (found.konvIsi || 1)) * Number(b.qtyPakai || 0);
     }
     if (!semuaLengkap) {
       kondimenDilewati++;

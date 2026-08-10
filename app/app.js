@@ -1439,6 +1439,23 @@ function renderFormBahan(){
   const el = $("#f-bahan");
   if (!formBahan.length){ el.innerHTML = '<div class="empty" style="padding:20px;">Belum ada bahan dipilih.</div>'; return; }
   const rows = formBahan.map((b, i) => {
+    if (b.hilang){
+      // Beda dari "belum lengkap satuan": bahannya sendiri yang sudah tidak
+      // ada, jadi form isi/satuan tidak menolong -- harganya memang tidak
+      // diketahui. Cuma bisa dihapus atau bahannya ditambahkan kembali.
+      return `<tr class="bahan-row" data-i="${i}">
+        <td colspan="5">
+          <div class="brow-flat">
+            <span class="pnm">${esc(b.nama)}</span>
+            <button class="prod-dup" data-act="rm" aria-label="Hapus"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14z"/><path d="M10 11v6M14 11v6"/></svg></button>
+          </div>
+          <div class="brow-warn" style="padding:0 0 8px;">
+            <span class="txt" style="color:var(--red);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h16.9a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg> Bahan ini sudah tidak ada di katalog — tidak ikut dihitung</span>
+          </div>
+          <div class="setup-hint">Tambahkan kembali lewat halaman Bahan, atau hapus dari resep ini.</div>
+        </td>
+      </tr>`;
+    }
     const needsSetup = !b.konv;
     if (needsSetup){
       return `<tr class="bahan-row" data-i="${i}">
@@ -1456,8 +1473,12 @@ function renderFormBahan(){
     }
     const price = effPrice(b), unit = effUnit(b);
     const sub = price * (b.qty || 0);
+    // Penanda sama seperti halaman Bahan & form Kondimen: konversi sudah ada
+    // tapi harga per unitnya tidak masuk akal. Koreksinya lewat tombol edit
+    // baris ini (popup-nya sudah punya field isi per kemasan & satuan).
+    const janggal = (b.override == null) && konvJanggal(price, unit, bahanHargaBeli(b), bahanIsi(b));
     return `<tr class="bahan-row" data-i="${i}">
-      <td><span class="pnm">${esc(b.nama)}</span></td>
+      <td><span class="pnm">${esc(b.nama)}</span>${janggal ? ' <span class="tanda-usang" title="Harga per unit janggal — cek isi per kemasan lewat tombol edit"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h16.9a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg></span>' : ''}</td>
       <td class="r"><span class="num-val">${b.qty || 0} ${esc(unit)}</span></td>
       <td class="r"><span class="num-val">${price.toFixed(2)}</span></td>
       <td class="r"><span class="num-val hl">${rp(sub)}</span></td>
@@ -1668,6 +1689,12 @@ function renderOpex(){
 function calcMaterial(){
   let total = 0;
   formBahan.forEach((b, idx) => {
+    // Bahan yatim / belum lengkap satuannya JANGAN ikut dihitung -- sama
+    // seperti hitungKondimenHpp(). Kalau ikut, effPrice() memakai harga per
+    // KEMASAN sebagai harga per gram (b.konv null -> tidak dibagi isi), persis
+    // yang bikin HPP meledak ratusan kali lipat. Simpan tetap dicegat di
+    // saveProduk(), ini supaya angka di layar tidak menyesatkan lebih dulu.
+    if (b.hilang || !b.konv) return;
     const sub = effPrice(b) * (b.qty || 0);
     total += sub;
     const row = $(`.bahan-row[data-i="${idx}"] [data-sub]`);
@@ -1716,6 +1743,13 @@ async function saveProduk(){
   const nama = $("#f-nama").value.trim();
   if (!nama){ toast("Nama produk wajib diisi"); return; }
   if (!formBahan.length){ toast("Tambahkan minimal satu bahan"); return; }
+  // Cegat SEBELUM tersimpan, sama seperti simpanKondimen(). Tanpa ini, bahan
+  // yatim/belum lengkap sudah dikeluarkan dari calcMaterial() -- artinya HPP
+  // yang tersimpan diam-diam tidak menghitung bahan itu sama sekali. Lebih
+  // baik menolak menyimpan daripada menyimpan angka yang kelihatan wajar tapi
+  // kurang satu bahan.
+  if (formBahan.some(b => b.hilang)){ toast("Ada bahan yang sudah tidak ada di katalog — hapus dari resep, atau tambahkan kembali lewat halaman Bahan"); return; }
+  if (formBahan.some(b => !b.konv)){ toast("Ada bahan yang satuannya belum dilengkapi — lengkapi dulu supaya HPP tidak salah hitung"); return; }
   const cabang_hpp_id = $("#f-cabang") ? $("#f-cabang").value : null;
   const calc = recalc();
 
@@ -1786,6 +1820,10 @@ async function openEdit(id){
     const found = allBahan().find(b => b.nama_normal === r.bahan_nama_normal);
     return {
       nama: found ? found.nama : r.bahan_nama_normal,
+      // Sama seperti kondimen: bahan yang sudah tidak ada di katalog mana pun.
+      // Dulu diam-diam ikut dihitung dengan harga 0 -- dan server justru
+      // melewati produknya, jadi layar & server bisa beda pendapat.
+      hilang: !found,
       nama_normal: r.bahan_nama_normal,
       harga: found ? found.harga : 0,
       sumber: r.sumber_bahan || (found ? found.sumber : "acuan"),
@@ -2113,14 +2151,20 @@ function bahanCatalog(){
   return [...acuan, ...manual];
 }
 
-// heuristik "isi kemungkinan salah" — harga per unit tidak masuk akal
-function bahanCuriga(b){
-  if (b.perUnit == null) return false;
-  if ((b.unit === "gr" || b.unit === "ml") && b.perUnit > 800) return true;
-  if (b.unit === "pcs" && b.perUnit > 4000) return true;
-  if (b.hargaBeli && b.isi && b.isi < 50 && b.hargaBeli > 20000) return true;
+// heuristik "isi kemungkinan salah" — harga per unit tidak masuk akal.
+// Dipisah dari bahanCuriga() supaya heuristik yang SAMA PERSIS bisa dipakai di
+// baris bahan form Kondimen & form produk, bukan cuma katalog halaman Bahan.
+// Sebelumnya cuma `!konv` (konversi belum diisi sama sekali) yang ditandai di
+// form, jadi bahan yang konversinya ADA tapi SALAH (mis. beans isi 15 gr
+// padahal 1000 gr) tampil seolah sudah beres — HPP-nya meleset diam-diam.
+function konvJanggal(perUnit, unit, hargaBeli, isi){
+  if (perUnit == null) return false;
+  if ((unit === "gr" || unit === "ml") && perUnit > 800) return true;
+  if (unit === "pcs" && perUnit > 4000) return true;
+  if (hargaBeli && isi && isi < 50 && hargaBeli > 20000) return true;
   return false;
 }
+function bahanCuriga(b){ return konvJanggal(b.perUnit, b.unit, b.hargaBeli, b.isi); }
 // Kategori sumber ternormalisasi -- dipakai badge DAN filter chip supaya
 // konsisten. Nilai asli dari Cashflow bahasa Inggris ("warehouse"), makanya
 // filter "gudang" dulu tidak cocok & tab Gudang kosong.
@@ -2488,12 +2532,20 @@ async function bukaKondimen(id){
         nama: b.bahan_nama || (found ? found.nama : b.bahan_nama_normal),
         nama_normal: b.bahan_nama_normal, sumber: b.sumber_bahan,
         harga: found ? found.harga : 0,
-        // Sama seperti di show()/renderKondimenBahan(): jangan default ke
-        // {isi:1,...} kalau memang belum ada konversi tersimpan atau
-        // ke-detect dari bahan acuan saat ini — biarkan null supaya
-        // renderKondimenBahan() menampilkan "Lengkapi satuan", bukan diam-diam
-        // salah hitung.
-        konv: b.isi_kemasan ? { isi: Number(b.isi_kemasan), unit: b.satuan || "gr" } : (found && found.konv ? found.konv : null),
+        // Bahan sudah tidak ada di katalog mana pun (acuan/manual/kondimen).
+        // Dulu diam-diam dihitung harga 0 -- bahannya jadi "gratis" dan HPP
+        // kondimen terlalu murah tanpa peringatan apa pun. Ini bukan kasus
+        // teoretis: "air" ditemukan masih nyantol di resep padahal barisnya
+        // sudah tidak ada di material_manual (dicek langsung di DB 2026-08-10).
+        hilang: !found,
+        // SATU BUKU: satuan SELALU dari katalog bersama (material_konversi utk
+        // bahan acuan, material_manual utk manual, satuan_hasil utk kondimen).
+        // Salinan kondimen_bahan.isi_kemasan/satuan TIDAK dibaca lagi -- dulu
+        // salinan itu yang menang, jadi koreksi satuan sebuah bahan tidak
+        // pernah sampai ke kondimen yang sudah tersimpan. Kolomnya tetap
+        // ditulis saat simpan sebagai catatan riwayat, cuma bukan lagi sumber
+        // hitungan, jadi tidak ada dua versi angka yang bisa berbeda.
+        konv: (found && found.konv) ? { ...found.konv } : null,
         qty: Number(b.qty_pakai) || 0, override: b.harga_override,
       };
     }),
@@ -2595,6 +2647,21 @@ function renderKondimenBahan(){
   const e = kondimenEdit;
   if (!e.bahan.length){ el.innerHTML = '<div class="empty" style="padding:14px;font-size:13px;">Belum ada bahan.</div>'; return; }
   el.innerHTML = e.bahan.map((b, i) => {
+    if (b.hilang){
+      // Beda dari "belum lengkap satuan": ini bahannya sendiri yang sudah tidak
+      // ada, jadi mengisi satuan tidak menolong sama sekali -- harganya memang
+      // tidak diketahui. Jangan tawarkan form isian yang menyesatkan.
+      return `<div class="bahan-row" style="padding:10px 12px;" data-i="${i}">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span class="brow-nm">${esc(b.nama)}</span>
+          <button class="icon-btn" data-krm="${i}" aria-label="Hapus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+        </div>
+        <div class="brow-warn" style="padding:8px 0 0;">
+          <span class="txt" style="color:var(--red);"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h16.9a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg> Bahan ini sudah tidak ada di katalog — tidak ikut dihitung</span>
+        </div>
+        <div class="setup-hint">Tambahkan kembali lewat halaman Bahan (tombol "Bahan manual"), atau hapus dari resep ini.</div>
+      </div>`;
+    }
     if (!b.konv){
       // Belum ada konversi — JANGAN hitung apa pun (dulu diam-diam dianggap
       // "isi 1 gram", bikin bahan yang dijual per kemasan besar seperti
@@ -2620,6 +2687,9 @@ function renderKondimenBahan(){
     const unit = b.konv.unit;
     const perUnit = (b.override != null) ? b.override : b.harga / (b.konv.isi || 1);
     const sub = perUnit * (b.qty || 0);
+    // Konversi ADA tapi angkanya kelihatan salah. Kalau harga/satuan sudah
+    // di-override manual, jangan diganggu -- itu keputusan sadar user.
+    const janggal = (b.override == null) && konvJanggal(perUnit, unit, b.harga, b.konv.isi);
     return `<div class="bahan-row" style="padding:10px 12px;" data-i="${i}">
       <div style="display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center;">
         <span class="brow-nm">${esc(b.nama)}</span>
@@ -2630,6 +2700,10 @@ function renderKondimenBahan(){
         <span style="font-size:11px;color:var(--ink-faint);">${perUnit.toFixed(2)}/${esc(unit)}${b.konv.isi > 1 ? ` · isi ${b.konv.isi}` : ""}</span>
         <button class="icon-btn" data-krm="${i}" aria-label="Hapus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
       </div>
+      ${janggal ? `<div class="brow-warn" style="padding:8px 0 0;" data-kwarn="${i}">
+        <span class="txt"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h16.9a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg> Satuan mungkin salah — ${rp(b.harga)} ÷ ${b.konv.isi} = ${perUnit.toFixed(2)}/${esc(unit)}</span>
+        <button class="btn btn-sm btn-primary" data-kfix="${i}" style="margin-left:auto;">Perbaiki</button>
+      </div>` : ""}
     </div>`;
   }).join("");
   // input (bukan change) + update bertarget (bukan renderKondimenBahan penuh)
@@ -2653,6 +2727,34 @@ function renderKondimenBahan(){
     const unit = $(`[data-kunit="${i}"]`, el).value;
     simpanKonversiKondimen(i, isi, unit);
   }));
+  $all("[data-kfix]", el).forEach(b => b.addEventListener("click", () => perbaikiSatuanKondimen(+b.dataset.kfix)));
+}
+
+// Ubah strip peringatan "satuan mungkin salah" jadi form koreksi di tempat.
+// Sengaja cuma menimpa isi strip itu, BUKAN renderKondimenBahan() penuh --
+// alasan yang sama seperti updateKondimenBahanRow(): render ulang seluruh
+// daftar bikin input qty di baris lain kehilangan fokus & isi ketikan.
+function perbaikiSatuanKondimen(i){
+  const el = $("#k-bahan");
+  const b = kondimenEdit.bahan[i];
+  if (!el || !b || !b.konv) return;
+  const warn = $(`[data-kwarn="${i}"]`, el);
+  if (!warn) return;
+  const det = deteksiSatuan(b.nama);
+  warn.innerHTML = `
+    <div style="width:100%;">
+      <div class="setup-hint ${det ? "detected" : ""}">${det ? "Terdeteksi dari nama: " + det.isi + " " + det.unit + " per kemasan — koreksi bila perlu" : rp(b.harga) + " per kemasan itu untuk berapa " + esc(b.konv.unit) + "?"}</div>
+      <div class="setup-box">
+        <input type="number" placeholder="isi per kemasan" value="${det ? det.isi : b.konv.isi}" data-kfisi="${i}">
+        <select data-kfunit="${i}">${satuanOptionsHtml(det ? det.unit : b.konv.unit)}</select>
+        <button class="btn btn-sm btn-primary" data-kfsave="${i}">Simpan</button>
+      </div>
+    </div>`;
+  warn.querySelector(`[data-kfsave="${i}"]`).addEventListener("click", () => {
+    const isi = parseFloat(warn.querySelector(`[data-kfisi="${i}"]`).value);
+    const unit = warn.querySelector(`[data-kfunit="${i}"]`).value;
+    simpanKonversiKondimen(i, isi, unit);
+  });
 }
 // Sama persis pola simpanKonversi() punya form produk (upsert ke
 // material_konversi yang dipakai bersama semua layar) — cuma disasar ke
@@ -2688,6 +2790,10 @@ async function simpanKondimen(){
   const e = kondimenEdit;
   if (!e.nama.trim()){ toast("Nama kondimen wajib diisi"); return; }
   if (!e.bahan.length){ toast("Tambahkan minimal satu bahan"); return; }
+  // Bahan yatim dicegat duluan supaya pesannya tepat -- b.hilang selalu ikut
+  // bikin b.konv null, jadi tanpa cek ini user cuma disuruh "lengkapi satuan"
+  // untuk bahan yang sebenarnya sudah tidak ada sama sekali.
+  if (e.bahan.some(b => b.hilang)){ toast("Ada bahan yang sudah tidak ada di katalog — hapus dari resep, atau tambahkan kembali lewat halaman Bahan"); return; }
   if (e.bahan.some(b => !b.konv)){ toast("Ada bahan yang satuannya belum dilengkapi — HPP tidak akan akurat"); return; }
   const calc = hitungKondimenHpp();
   const row = {
