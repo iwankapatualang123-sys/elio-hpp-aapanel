@@ -12,7 +12,8 @@
     "prisma:studio": "prisma studio",
     "migrate:from-supabase": "tsx scripts/migrateFromSupabase.ts",
     "set-pin": "tsx scripts/setPin.ts",
-    "refresh-harga-sekarang": "tsx scripts/refreshHargaSekarang.ts"
+    "refresh-harga-sekarang": "tsx scripts/refreshHargaSekarang.ts",
+    "cek-bahan": "tsx scripts/cekBahanBermasalah.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.20.0",
