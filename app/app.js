@@ -395,6 +395,28 @@ function bahanInfoHtml(b){
 
 let bahanModalSelected = new Map(); // nama_normal -> qty pakai
 let bahanModalQuery = "";
+// !=null saat pemilih bahan dipakai untuk MENGGANTI bahan (mis. yg hilang dari
+// katalog) di formBahan[idx] -- mode single-click, bukan multi-pilih. Direset
+// di tutupBahanModal(). Menjawab permintaan: tandai tanpa hapus, bisa diganti
+// ke bahan lain yang terdaftar (qty tetap).
+let bahanReplaceIndex = null;
+function gantiBahan(i){ bahanReplaceIndex = i; bukaBahanModal(); }
+function doGantiBahan(nn){
+  const i = bahanReplaceIndex;
+  const src = allBahan().find(x => x.nama_normal === nn);
+  if (i == null || !src){ tutupBahanModal(); return; }
+  const qtyLama = formBahan[i] ? (formBahan[i].qty || 0) : 0;
+  // objek baru dari katalog -> tidak punya flag `hilang`, jadi baris kembali
+  // normal. konv ikut dari katalog (kalau ada), override direset.
+  formBahan[i] = {
+    nama: src.nama, nama_normal: src.nama_normal, harga: src.harga, sumber: src.sumber,
+    tanggal: src.tanggal || null, konv: src.konv ? { ...src.konv } : null,
+    qty: qtyLama, override: null, hargaBeliOverride: null,
+  };
+  tutupBahanModal();
+  renderFormBahan(); recalc(); autoDraft();
+  toast("Bahan diganti ke " + src.nama);
+}
 
 function bukaBahanModal(){
   let modal = $("#bahanModal");
@@ -427,12 +449,18 @@ function bukaBahanModal(){
   bahanModalSelected = new Map();
   bahanModalQuery = "";
   modal.querySelector("#bmCari").value = "";
+  // Sesuaikan tampilan utk mode ganti (single-click) vs tambah (multi-pilih).
+  const isGanti = bahanReplaceIndex != null;
+  modal.querySelector(".dm-head h3").textContent = isGanti ? "Ganti Bahan" : "Pilih Bahan";
+  modal.querySelector(".bm-actions").style.display = isGanti ? "none" : "";
+  modal.querySelector(".bm-foot").style.display = isGanti ? "none" : "";
   renderBahanModalList();
   modal.classList.remove("hidden");
   requestAnimationFrame(() => modal.classList.add("show"));
   setTimeout(() => modal.querySelector("#bmCari").focus(), 60);
 }
 function tutupBahanModal(){
+  bahanReplaceIndex = null;
   const modal = $("#bahanModal");
   if (!modal) return;
   modal.classList.remove("show");
@@ -441,8 +469,18 @@ function tutupBahanModal(){
 function renderBahanModalList(){
   const listEl = $("#bmList");
   if (!listEl) return;
-  const sudahAda = new Set(formBahan.map(b => b.nama_normal));
   const q = bahanModalQuery.trim().toLowerCase();
+  // Mode GANTI: klik satu bahan langsung mengganti (tanpa checkbox/qty/footer).
+  if (bahanReplaceIndex != null){
+    const dipakaiLain = new Set(formBahan.filter((_, idx) => idx !== bahanReplaceIndex).map(b => b.nama_normal));
+    const listG = allBahan().filter(b => !dipakaiLain.has(b.nama_normal) && (!q || b.nama.toLowerCase().includes(q)));
+    listEl.innerHTML = listG.length
+      ? listG.map(b => `<div class="bm-row bm-row-pick" data-nn="${esc(b.nama_normal)}"><div class="bm-row-body">${bahanInfoHtml(b)}</div></div>`).join("")
+      : `<div class="empty" style="padding:24px;font-size:13px;">Tidak ada bahan cocok.</div>`;
+    $all(".bm-row", listEl).forEach(row => row.addEventListener("click", () => doGantiBahan(row.dataset.nn)));
+    return;
+  }
+  const sudahAda = new Set(formBahan.map(b => b.nama_normal));
   const list = allBahan().filter(b => !sudahAda.has(b.nama_normal) && (!q || b.nama.toLowerCase().includes(q)));
   if (!list.length){
     const cocokTapiSudahAda = allBahan().some(b => (!q || b.nama.toLowerCase().includes(q)) && sudahAda.has(b.nama_normal));
@@ -1488,8 +1526,9 @@ function renderFormBahan(){
           </div>
           <div class="brow-warn" style="padding:0 0 8px;">
             <span class="txt" style="color:var(--red);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h16.9a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg> Bahan ini sudah tidak ada di katalog — tidak ikut dihitung</span>
+            <button class="btn btn-sm btn-primary" data-act="ganti" style="margin-left:auto;">Ganti bahan</button>
           </div>
-          <div class="setup-hint">Tambahkan kembali lewat halaman Bahan, atau hapus dari resep ini.</div>
+          <div class="setup-hint">Ganti ke bahan yang terdaftar (qty tetap), tambahkan kembali lewat halaman Bahan, atau hapus dari resep ini.</div>
         </td>
       </tr>`;
     }
@@ -1537,6 +1576,8 @@ function renderFormBahan(){
     if (editBtn) editBtn.addEventListener("click", () => bukaEditBahanModal(i));
     const lengkapiBtn = row.querySelector('[data-act="lengkapi"]');
     if (lengkapiBtn) lengkapiBtn.addEventListener("click", () => lengkapiSatuan(row, i));
+    const gantiBtn = row.querySelector('[data-act="ganti"]');
+    if (gantiBtn) gantiBtn.addEventListener("click", () => gantiBahan(i));
   });
   recalc();
 }
