@@ -84,14 +84,24 @@ diubah `npm install` di server, jalankan dulu:
    ```
    Iframe (di kode aplikasi gate, BUKAN terminal):
    `<iframe src="https://hpp.eliodigihub.my.id/widget.html?token=TOKENMU" ...>`
-2. **Data isi/satuan bahan salah** (bikin HPP meledak). Contoh ditemukan: beans
-   (isi 15/18 gr, harusnya berat asli mis. 1000 gr), cup 12oz (isi 355, harusnya
-   50 pcs krn 62.400 = harga 50 pcs), LKK Minyak Wijen, Skm, dll. Halaman Bahan
-   menandai yang janggal (⚠). User perlu koreksi isi per kemasan tiap bahan.
-   Fix kode sudah mencegah HPP salah-hitung (produk/kondimen dgn bahan belum
-   lengkap satuan DILEWATI saat Update Harga, tidak dihitung pakai harga mentah).
-3. **Kondimen menyimpan salinan satuan sendiri** (kondimen_bahan.isi_kemasan),
-   BUKAN baca dari material_konversi bersama. Jadi kalau satuan bahan dibetulkan,
-   kondimen yang sudah pakai bahan itu TIDAK ikut terupdate — perlu diedit ulang.
-   User pernah menyinggung ingin ini disamakan (opsional, belum dikerjakan).
+2. **Data isi/satuan bahan salah** (bikin HPP meledak) — masih perlu KOREKSI DATA
+   oleh user. Contoh: beans (isi 15/18 gr, harusnya ~1000), cup 12oz (isi 355,
+   harusnya 50 pcs), LKK Minyak Wijen, Skm, dll. Kode-nya sudah aman:
+   - Halaman Bahan + form produk + form Kondimen menandai satuan janggal (⚠,
+     heuristik `konvJanggal`). `npm run cek-bahan` (backend) melistnya dari CLI.
+   - Bahan bermasalah/yatim DIKELUARKAN dari perhitungan; saveProduk & scheduler
+     menolak/melewati produk-kondimen yg belum beres (tidak lagi diam2 harga 0).
+   - Bahan yatim bisa **Diganti** ke bahan katalog (tombol "Ganti bahan").
+   Yang tersisa murni input data: user membetulkan isi per kemasan tiap bahan.
+3. ~~Kondimen menyimpan salinan satuan sendiri~~ — SUDAH diperbaiki (commit
+   e65fcc2): kondimen kini baca satuan dari sumber bersama (material_konversi),
+   di frontend & `jobs/refreshHarga.ts`. Kolom salinan tetap ditulis sbg
+   riwayat, tidak dibaca lagi.
 4. Retire lama: Vercel+Supabase HPP lama belum diputuskan cutover finalnya.
+
+## Catatan: pernah ada kerja paralel (Windows + MacBook)
+Sekitar 10 Agu 2026 dua sesi (Windows & Mac) menggarap masalah "bahan
+bermasalah" bersamaan. Sudah diintegrasikan: versi Mac (lebih menyeluruh:
+konvJanggal, kondimen satu-buku, blok simpan, script cek-bahan) jadi dasar,
+lalu ditambah fitur "Ganti bahan" (commit 28fda27). Kalau lanjut lagi, tetap
+`git pull` dulu sebelum commit untuk hindari divergen.
