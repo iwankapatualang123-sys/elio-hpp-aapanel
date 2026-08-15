@@ -475,8 +475,11 @@
   .app-sidebar{ position:sticky; top:16px; background:var(--surface); border:1px solid var(--line); border-radius:16px; padding:12px; box-shadow:var(--shadow-sm); }
   .app-content{ min-width:0; }
 
-  /* Layar "membeku" (desktop saja) -- header/tabs/hero/sidebar/toolbar tetap
-     diam, cuma isi tabel (#prodList) atau isi tab aktif yang scroll sendiri.
+  /* Layar "membeku" (desktop saja) -- header atas & sidebar tetap diam, isi tab
+     yang aktif menggulir sendiri mengisi sisa tinggi window. Hero & toolbar
+     halaman IKUT menggulir bersama isinya (dulu ikut dibekukan, tapi di layar
+     laptop itu menyisakan kotak tabel yang terlalu pendek -- lihat catatan di
+     #viewList di bawah).
      Mobile/tablet (<=820px) TIDAK dipakaikan ini -- scroll halaman penuh
      seperti biasa lebih wajar buat layar sentuh & sidebar yang sudah jadi
      baris horizontal di situ (lihat @media max-width:820px lain). */
@@ -494,20 +497,29 @@
     .app-content{ height:100%; display:flex; flex-direction:column; overflow:hidden; }
     /* semua view isi kolom konten -- yang aktif ngisi sisa tinggi & scroll sendiri */
     #viewDash{ flex:1; min-height:0; overflow-y:auto; }
-    #viewList{ flex:1; min-height:0; display:flex; flex-direction:column; overflow:hidden; }
-    #prodHero{ flex-shrink:0; }
-    #prodListTop{ flex-shrink:0; }
-    #prodList{ flex:1; min-height:0; overflow-y:auto; }
+    /* Halaman Produk & Bahan: SELURUH isi tab yang scroll, bukan cuma kotak
+       tabelnya. Dulu hero + toolbar dibekukan dan hanya #prodList yang boleh
+       menggulir -- di layar laptop hero (±250px) + toolbar + header tab memakan
+       tinggi sedemikian rupa sampai kotak tabelnya tinggal ±300px, jadi cuma
+       muat 2-3 baris produk dan terasa seperti jendela kecil di tengah layar
+       ("tidak bisa scroll sampai ke bawah, cuma scroll kolom, kolomnya kecil
+       banget"). Dengan seluruh tab yang menggulir, hero tergulir ke atas dan
+       tabel memakai sisa tinggi layar sepenuhnya. Pola ini sama dengan
+       #viewAdd/#viewKelola di bawah yang memang sudah begitu sejak awal. */
+    #viewList{ flex:1; min-height:0; overflow-y:auto; }
     #viewAdd, #viewKelola{ flex:1; min-height:0; overflow-y:auto; }
     /* Sub-hero ("Edit Produk"/"Kondimen"/"Pengaturan") DIAM di atas saat form
-       di-scroll -- konsisten dgn #prodHero di halaman Produk yang juga diam.
-       sticky (bukan flex-shrink terpisah) supaya tak perlu bungkus ulang
-       template form yang besar; sudah diuji jalan walau ada animasi fadeUp. */
+       di-scroll. Ini SATU-SATUNYA yang masih dipatok di halaman berkonten
+       panjang -- tingginya kecil, jadi tidak memakan ruang seperti hero
+       halaman Produk dulu. sticky (bukan flex-shrink terpisah) supaya tak perlu
+       bungkus ulang template form yang besar; sudah diuji jalan walau ada
+       animasi fadeUp. */
     #viewAdd > .sub-hero, #viewKelola > .sub-hero{ position:sticky; top:0; z-index:5; }
-    /* Halaman Bahan: hero+toolbar diam, tabel scroll (pola sama #viewList). */
-    #viewBahan{ flex:1; min-height:0; display:flex; flex-direction:column; overflow:hidden; }
-    #bahanTop{ flex-shrink:0; }
-    #bahanList{ flex:1; min-height:0; overflow-y:auto; }
+    /* Halaman Bahan: pola sama seperti #viewList di atas -- seluruh isi tab
+       yang scroll, bukan cuma daftar bahannya. Alasan yang sama persis, dan
+       halaman ini justru paling sering dipakai untuk menyisir banyak bahan
+       sekaligus, jadi tinggi layar penuh lebih terasa gunanya. */
+    #viewBahan{ flex:1; min-height:0; overflow-y:auto; }
   }
   /* Menu navigasi utama di atas sidebar (Dashboard/Produk/Tambah/Kelola) */
   .side-nav{ display:flex; flex-direction:column; gap:3px; }
