@@ -97,7 +97,40 @@ diubah `npm install` di server, jalankan dulu:
    e65fcc2): kondimen kini baca satuan dari sumber bersama (material_konversi),
    di frontend & `jobs/refreshHarga.ts`. Kolom salinan tetap ditulis sbg
    riwayat, tidak dibaca lagi.
-4. Retire lama: Vercel+Supabase HPP lama belum diputuskan cutover finalnya.
+4. **Penamaan bahan di Cashflow tidak konsisten — ini akar masalah nomor 2, dan
+   akan terus berulang.** HPP mencocokkan bahan ke harga lewat NAMA PERSIS
+   (`nama_normal`). Setiap kali staf mengetik nama sedikit berbeda saat mencatat
+   belanja, sambungannya putus dan produk yang memakainya berhenti dihitung.
+   Dicek di data asli 10 Agu 2026: untuk satu jenis bawang saja ada **24 nama
+   berbeda** — `bawang`, `bawang kg`, `bawang/kg`, `bawang ons`, `bawang/ons`,
+   `bawang putih`, `bawang putih kg`, `bawang putih ons`, `bawang putih/`
+   (Rp 20, jelas salah ketik), `bawang  merah` (dua spasi), dst.
+   Contoh nyata: resep Nasi Goreng Hongkong menunjuk `bawang putih 1kg` yang
+   sudah tidak ada lagi; penggantinya `bawang putih kg` (27.000/kg).
+   - **Mitigasi yang sudah jalan** (tidak perlu tindakan): daftar produk
+     menandai merah produk yang berhenti dihitung, dan `npm run cek-bahan`
+     menyebut bahan penyebabnya. Dulu putusnya senyap total.
+   - **Belum dikerjakan, sengaja ditunda**: tabel padanan nama (satu bahan di
+     resep boleh menunjuk beberapa penulisan di Cashflow). Keputusan user:
+     jalani dulu beberapa minggu, lihat seberapa sering putus, baru nilai apakah
+     sepadan dibangun. JANGAN dibangun tanpa data frekuensi itu.
+   - Akar sesungguhnya ada di sisi input Cashflow (isian bebas, bukan pilihan),
+     di luar cakupan HPP.
+5. Retire lama: Vercel+Supabase HPP lama belum diputuskan cutover finalnya.
+
+## Keadaan data per 10 Agu 2026 (hasil `npm run cek-bahan`)
+Dicatat supaya sesi berikut tahu mana pekerjaan kode dan mana pekerjaan input.
+- 21 produk aktif: **11 siap dihitung**, **8 belum ada resep sama sekali**
+  (Mie Ayam, Aglio e olio, Nasi Goreng Kemangi, Carbonara, Bakmi Kuah,
+  Bolognese, Pisang Goreng, Bakmi Goreng), **2 bahan bermasalah**:
+  - Nutty Coffee → `trieste hazelnut` (isi per kemasan belum diisi)
+  - Nasi Goreng Hongkong → `bawang putih 1kg` (hilang dari data Cashflow)
+- 1 kondimen aktif, sudah bersih.
+- **Lubang terbesar bukan soal kode**: 9 dari 21 produk belum punya HPP sama
+  sekali. Itu pekerjaan input data oleh user/tim dapur, bukan pekerjaan teknis.
+- Temuan sampingan yang sudah beres: `air` sempat jadi bahan yatim (masih di
+  resep kondimen, barisnya sudah tidak ada di `material_manual`) dan diam-diam
+  dihitung seharga nol. Sudah ditambahkan ulang sebagai bahan manual harga 0.
 
 ## Catatan: pernah ada kerja paralel (Windows + MacBook)
 Sekitar 10 Agu 2026 dua sesi (Windows & Mac) menggarap masalah "bahan

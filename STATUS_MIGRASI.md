@@ -1,5 +1,22 @@
 # Proyek: Migrasi Elio HPP dari Supabase ke Self-Host aaPanel
 
+> ## ⚠️ DOKUMEN SEJARAH — JANGAN DIPAKAI SEBAGAI STATUS TERKINI
+>
+> Isi di bawah ini ditulis **26 Juli 2026**, saat migrasi masih rencana. Semua
+> checklist "belum dikerjakan" di dalamnya **SUDAH SELESAI**: aplikasinya sudah
+> lama live di https://hpp.eliodigihub.my.id/, backend jalan di PM2 port 3904,
+> data sudah dimigrasi, dan harga acuan sekarang dibaca dari `elio_cashflow`
+> (PostgreSQL lokal) — bukan lagi dari Supabase seperti tertulis di "Fase 1".
+>
+> **Untuk keadaan sekarang, baca `HANDOFF.md`.** Dokumen ini disimpan hanya
+> sebagai catatan alasan di balik keputusan teknis (kenapa apiClient.js jadi
+> shim, kenapa PIN bersama, kenapa `/replace` dipanggil dua kali, dst) — bagian
+> itu masih berlaku dan berguna.
+>
+> Dokumen ini sempat menyesatkan sesi baru pada 10 Agu 2026 karena masih
+> menulis "belum di-push ke GitHub" padahal aplikasinya sudah berjalan sebulan.
+> Peringatan ini ditambahkan supaya tidak terulang.
+
 ## Ringkasan
 
 Aplikasi "HPP Elio" (kalkulator harga pokok & harga jual FNB) awalnya 100% berjalan di atas
