@@ -323,15 +323,20 @@ async function hitungIndikatorProduk(){
       p._trenPersen = prev ? Math.round((now - prev) / prev * 100) : 0;
       p._hppNow = now; p._hppPrev = prev; // dipakai agregasi tren per kategori
     } else { p._tren = null; p._hppNow = null; p._hppPrev = null; }
-    // bahan usang
+    // Bahan usang -- simpan NAMA + umur harganya, bukan sekadar true/false.
+    // Dulu cuma boolean: ikon jam muncul di produk, tapi user tidak bisa tahu
+    // bahan MANA yang belanjanya belum diperbarui, jadi tandanya tidak bisa
+    // ditindaklanjuti. Sekarang daftarnya ikut disebut di tooltip.
     const rs = resepPer[p.id] || [];
-    let adaUsang = false;
+    const usangList = [];
     rs.forEach(r => {
       if (r.sumber_bahan === "manual" || r.sumber_bahan === "kondimen") return;
       const ac = hargaAcuan.find(a => a.nama_normal === r.bahan_nama_normal);
-      if (ac && ac.tanggal && infoTanggal(ac.tanggal).lama) adaUsang = true;
+      if (!ac || !ac.tanggal) return;
+      const t = infoTanggal(ac.tanggal);
+      if (t.lama) usangList.push(r.bahan_nama_normal + " (" + t.hari + " hari lalu)");
     });
-    p._bahanUsang = adaUsang;
+    p._bahanUsang = usangList.length ? usangList : null;
 
     // Bahan yang bikin produk ini DILEWATI saat refresh HPP. Aturannya sengaja
     // mencerminkan cariBahan() di backend/src/jobs/refreshHarga.ts -- kalau
@@ -846,7 +851,12 @@ function renderProdukList(){
       if (!belum && p._tren === "naik") tren = `<span class="tren tren-naik" title="HPP naik ${Math.abs(p._trenPersen)}% dari sebelumnya">▲ ${Math.abs(p._trenPersen)}%</span>`;
       else if (!belum && p._tren === "turun") tren = `<span class="tren tren-turun" title="HPP turun ${Math.abs(p._trenPersen)}% dari sebelumnya">▼ ${Math.abs(p._trenPersen)}%</span>`;
       // tanda bahan usang
-      const usang = (!belum && p._bahanUsang) ? `<span class="tanda-usang" title="Ada bahan dengan harga acuan >30 hari — HPP mungkin tidak akurat"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>` : "";
+      // Tooltip menyebut bahannya satu per satu (bukan cuma "ada bahan yang
+      // usang") supaya bisa langsung ditindaklanjuti. Sama seperti takHitung
+      // di bawah, esc() tidak meng-escape kutip ganda padahal ini masuk ke
+      // dalam atribut title="...".
+      const usangTitle = p._bahanUsang ? esc(p._bahanUsang.join(", ")).replace(/"/g, "&quot;") : "";
+      const usang = (!belum && p._bahanUsang) ? `<span class="tanda-usang" title="Belanja terakhir bahan ini sudah lewat 30 hari, harga mungkin sudah berubah — ${usangTitle}"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>` : "";
       // esc() tidak meng-escape tanda kutip ganda, sedangkan ini masuk ke dalam
       // atribut title="..." -- nama bahan dari data belanja bisa saja memuatnya
       // (mis. cup 12"), dan itu akan merusak atributnya.
@@ -2211,6 +2221,10 @@ function switchTab(tab){
 // =====================================================================
 let bahanCari = "";
 let bahanFilterSumber = ""; // "" | "gudang" | "harian" | "manual"
+// Saringan TERPISAH dari bahanFilterSumber (bukan salah satu chip sumber) --
+// dimensinya beda: "dari mana bahannya" vs "kapan terakhir dibelanjakan".
+// Keduanya bisa aktif bersamaan, mis. Gudang + harganya lama.
+let bahanFilterUsang = false;
 
 function bahanCatalog(){
   const acuan = hargaAcuan.map(b => {
@@ -2243,6 +2257,10 @@ function konvJanggal(perUnit, unit, hargaBeli, isi){
   return false;
 }
 function bahanCuriga(b){ return konvJanggal(b.perUnit, b.unit, b.hargaBeli, b.isi); }
+// Harga belanja terakhirnya sudah lewat 30 hari (ambang sama dgn infoTanggal,
+// dipakai juga oleh ikon jam di daftar produk). Bahan manual tidak punya
+// tanggal belanja -- harganya diketik sendiri, jadi tidak pernah "usang".
+function bahanUsang(b){ return !!(b.tanggal && infoTanggal(b.tanggal).lama); }
 // Kategori sumber ternormalisasi -- dipakai badge DAN filter chip supaya
 // konsisten. Nilai asli dari Cashflow bahasa Inggris ("warehouse"), makanya
 // filter "gudang" dulu tidak cocok & tab Gudang kosong.
@@ -2267,11 +2285,22 @@ function renderBahanView(){
   let list = bahanCatalog();
   if (bahanCari) list = list.filter(b => b.nama.toLowerCase().includes(bahanCari.toLowerCase()));
   if (bahanFilterSumber) list = list.filter(b => bahanKategoriSumber(b) === bahanFilterSumber);
+  if (bahanFilterUsang) list = list.filter(bahanUsang);
   list.sort((a, b) => a.nama.localeCompare(b.nama));
   const curigaCount = bahanCatalog().filter(bahanCuriga).length;
+  const usangCount = bahanCatalog().filter(bahanUsang).length;
 
   const rows = list.map(b => {
     const curiga = bahanCuriga(b);
+    // Umur harga: dulu cuma dipakai di popup edit bahan & tooltip produk, jadi
+    // di katalog ini tidak kelihatan sama sekali -- user tidak punya cara
+    // menyisir "bahan mana yang belanjanya belum diperbarui".
+    const t = b.tanggal ? infoTanggal(b.tanggal) : null;
+    const tglTxt = !t
+      ? `<span class="sub-note" style="display:inline;">—</span>`
+      : t.lama
+        ? `<span class="tanda-usang" title="Belanja terakhir ${t.hari} hari lalu — harga mungkin sudah berubah"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span> <span class="si-usang">${esc(t.teks)}</span>`
+        : `<span class="sub-note" style="display:inline;">${esc(t.teks)}</span>`;
     const key = b.tipe === "manual" ? b.id : b.nama_normal;
     const perUnitTxt = b.perUnit == null
       ? `<span class="sub-note" style="color:var(--amber);display:inline;">belum diatur</span>`
@@ -2283,6 +2312,7 @@ function renderBahanView(){
       <td class="r">${b.isi != null ? b.isi : "—"}</td>
       <td>${esc(b.unit || "—")}</td>
       <td class="r">${perUnitTxt}</td>
+      <td>${tglTxt}</td>
       <td class="r">
         <button class="prod-dup" data-bedit="${esc(key)}" data-btipe="${b.tipe}" title="Edit"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.1 2.1 0 013 3L12 15l-4 1 1-4z"/></svg></button>
         <button class="prod-dup" data-bdel="${esc(key)}" data-btipe="${b.tipe}" title="Hapus"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14z"/><path d="M10 11v6M14 11v6"/></svg></button>
@@ -2300,7 +2330,7 @@ function renderBahanView(){
           <div>
             <div class="sub-hero-badge"><span class="dot"></span> Katalog Material</div>
             <h1 class="sub-hero-title">Bahan</h1>
-            <p class="sub-hero-sub">Semua material beserta harga & satuannya${curigaCount ? ` · <b>${curigaCount} perlu dicek</b>` : ""}.</p>
+            <p class="sub-hero-sub">Semua material beserta harga & satuannya${curigaCount ? ` · <b>${curigaCount} satuan perlu dicek</b>` : ""}${usangCount ? ` · <b>${usangCount} harganya >30 hari</b>` : ""}.</p>
           </div>
         </div>
       </div>
@@ -2308,12 +2338,15 @@ function renderBahanView(){
         <div class="search-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg><input type="text" id="cariBahan" placeholder="Cari bahan…" value="${esc(bahanCari)}">${bahanCari ? '<button id="cariBahanClear" aria-label="Hapus">&times;</button>' : ''}</div>
         <button class="btn btn-sm btn-primary" id="btnTambahBahanManual"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg> Bahan manual</button>
       </div>
-      <div class="bahan-filter">${chip("", "Semua")}${chip("gudang", "Gudang")}${chip("harian", "Harian")}${chip("manual", "Manual")}</div>
+      <div class="bahan-filter">${chip("", "Semua")}${chip("gudang", "Gudang")}${chip("harian", "Harian")}${chip("manual", "Manual")}
+        ${usangCount ? `<span style="width:1px;height:20px;background:var(--line);margin:0 4px;"></span>
+        <button class="bahan-fchip ${bahanFilterUsang ? "active" : ""}" id="fUsang" title="Cuma tampilkan bahan yang belanja terakhirnya sudah lewat 30 hari"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-1px;margin-right:4px;"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Harga lama (${usangCount})</button>` : ""}
+      </div>
     </div>
     <div id="bahanList">
       <div class="prod-card"><div class="prod-table-wrap"><table class="prod-table">
-        <thead><tr><th>Bahan</th><th>Sumber</th><th class="r">Harga/kemasan</th><th class="r">Isi</th><th>Satuan</th><th class="r">Harga/unit</th><th></th></tr></thead>
-        <tbody>${rows || '<tr><td colspan="7"><div class="empty" style="padding:24px;">Tidak ada bahan.</div></td></tr>'}</tbody>
+        <thead><tr><th>Bahan</th><th>Sumber</th><th class="r">Harga/kemasan</th><th class="r">Isi</th><th>Satuan</th><th class="r">Harga/unit</th><th>Belanja terakhir</th><th></th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="8"><div class="empty" style="padding:24px;">Tidak ada bahan.</div></td></tr>'}</tbody>
       </table></div></div>
     </div>`;
 
@@ -2321,6 +2354,7 @@ function renderBahanView(){
   if (ci) ci.addEventListener("input", (e) => { bahanCari = e.target.value; const pos = e.target.selectionStart; renderBahanView(); const again = $("#cariBahan"); if (again){ again.focus(); again.setSelectionRange(pos, pos); } });
   const cc = $("#cariBahanClear"); if (cc) cc.addEventListener("click", () => { bahanCari = ""; renderBahanView(); });
   $all("[data-fsumber]", v).forEach(b => b.addEventListener("click", () => { bahanFilterSumber = b.dataset.fsumber; renderBahanView(); }));
+  const fu = $("#fUsang"); if (fu) fu.addEventListener("click", () => { bahanFilterUsang = !bahanFilterUsang; renderBahanView(); });
   const tm = $("#btnTambahBahanManual"); if (tm) tm.addEventListener("click", () => bukaMaterialModal({ tipe: "manual", id: null, nama: "", unit: "pcs", perUnit: 0 }));
   $all("[data-bedit]", v).forEach(btn => btn.addEventListener("click", () => {
     const tipe = btn.dataset.btipe, key = btn.dataset.bedit;
