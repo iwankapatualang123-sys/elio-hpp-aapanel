@@ -2913,6 +2913,14 @@ function updateKondimenBahanRow(i){
 async function simpanKondimen(){
   const e = kondimenEdit;
   if (!e.nama.trim()){ toast("Nama kondimen wajib diisi"); return; }
+  // Total hasil WAJIB > 0 dan tidak boleh diam-diam diganti.
+  // Dulu barisnya `total_hasil: e.total_hasil || 1` -- kalau kolomnya kosong
+  // (mis. dihapus dulu untuk diketik ulang) atau 0, nilainya diam-diam jadi 1
+  // tanpa pesan apa pun. User melaporkan persis ini: "sudah aku ganti 90 gram
+  // tapi berubah jadi 1". Akibatnya fatal, bukan sekadar salah tampil: HPP per
+  // satuan = HPP total / total hasil, jadi dgn 1 setiap gram dihargai sebesar
+  // SATU BATCH penuh, dan semua produk yang memakai kondimen itu ikut meleset.
+  if (!(Number(e.total_hasil) > 0)){ toast("Total hasil harus diisi dan lebih dari 0"); return; }
   if (!e.bahan.length){ toast("Tambahkan minimal satu bahan"); return; }
   // Bahan yatim dicegat duluan supaya pesannya tepat -- b.hilang selalu ikut
   // bikin b.konv null, jadi tanpa cek ini user cuma disuruh "lengkapi satuan"
@@ -2921,7 +2929,7 @@ async function simpanKondimen(){
   if (e.bahan.some(b => !b.konv)){ toast("Ada bahan yang satuannya belum dilengkapi — HPP tidak akan akurat"); return; }
   const calc = hitungKondimenHpp();
   const row = {
-    nama: e.nama.trim(), satuan_hasil: e.satuan_hasil || "gr", total_hasil: e.total_hasil || 1,
+    nama: e.nama.trim(), satuan_hasil: e.satuan_hasil || "gr", total_hasil: Number(e.total_hasil),
     hpp_total: Math.round(calc.total * 100) / 100, hpp_per_satuan: Math.round(calc.per * 100) / 100,
     updated_at: new Date().toISOString(),
   };
