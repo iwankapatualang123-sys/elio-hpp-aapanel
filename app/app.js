@@ -1562,7 +1562,7 @@ function renderFormBahan(){
     // Penanda sama seperti halaman Bahan & form Kondimen: konversi sudah ada
     // tapi harga per unitnya tidak masuk akal. Koreksinya lewat tombol edit
     // baris ini (popup-nya sudah punya field isi per kemasan & satuan).
-    const janggal = (b.override == null) && konvJanggal(price, unit, bahanHargaBeli(b), bahanIsi(b));
+    const janggal = (b.override == null) && konvJanggal(price, unit, bahanHargaBeli(b), bahanIsi(b), b.sumber);
     return `<tr class="bahan-row" data-i="${i}">
       <td><span class="pnm">${esc(b.nama)}</span>${janggal ? ' <span class="tanda-usang" title="Harga per unit janggal — cek isi per kemasan lewat tombol edit"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h16.9a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg></span>' : ''}</td>
       <td class="r"><span class="num-val">${b.qty || 0} ${esc(unit)}</span></td>
@@ -2249,14 +2249,26 @@ function bahanCatalog(){
 // Sebelumnya cuma `!konv` (konversi belum diisi sama sekali) yang ditandai di
 // form, jadi bahan yang konversinya ADA tapi SALAH (mis. beans isi 15 gr
 // padahal 1000 gr) tampil seolah sudah beres — HPP-nya meleset diam-diam.
-function konvJanggal(perUnit, unit, hargaBeli, isi){
+// `sumber` WAJIB: heuristik ini cuma sahih untuk bahan dari data belanja
+// ("acuan"). Yang ditebaknya adalah "isi per kemasan salah" — dan itu cuma bisa
+// terjadi kalau harganya berasal dari harga KEMASAN yang dibagi isi.
+//   - kondimen: harganya HASIL HITUNG resep, per porsi. Wajar mahal, tidak
+//     punya "isi" yang bisa keliru.
+//   - manual: harganya diketik langsung PER SATUAN oleh user, isi selalu 1.
+// Menandai keduanya cuma menghasilkan peringatan palsu. Ditemukan nyata:
+// kondimen "Ayam Taliwang" Rp 8.069/pcs ditandai janggal (ambang pcs >4.000)
+// padahal itu memang harga per porsinya, dan produknya sendiri sudah sehat.
+function konvJanggal(perUnit, unit, hargaBeli, isi, sumber){
+  if (sumber === "kondimen" || sumber === "manual") return false;
   if (perUnit == null) return false;
   if ((unit === "gr" || unit === "ml") && perUnit > 800) return true;
   if (unit === "pcs" && perUnit > 4000) return true;
   if (hargaBeli && isi && isi < 50 && hargaBeli > 20000) return true;
   return false;
 }
-function bahanCuriga(b){ return konvJanggal(b.perUnit, b.unit, b.hargaBeli, b.isi); }
+// b.tipe di katalog bernilai "acuan" | "manual" (bukan b.sumber yang isinya
+// nama sumber belanja seperti "warehouse"/"harian").
+function bahanCuriga(b){ return konvJanggal(b.perUnit, b.unit, b.hargaBeli, b.isi, b.tipe); }
 // Harga belanja terakhirnya sudah lewat 30 hari (ambang sama dgn infoTanggal,
 // dipakai juga oleh ikon jam di daftar produk). Bahan manual tidak punya
 // tanggal belanja -- harganya diketik sendiri, jadi tidak pernah "usang".
@@ -2801,7 +2813,7 @@ function renderKondimenBahan(){
     const sub = perUnit * (b.qty || 0);
     // Konversi ADA tapi angkanya kelihatan salah. Kalau harga/satuan sudah
     // di-override manual, jangan diganggu -- itu keputusan sadar user.
-    const janggal = (b.override == null) && konvJanggal(perUnit, unit, b.harga, b.konv.isi);
+    const janggal = (b.override == null) && konvJanggal(perUnit, unit, b.harga, b.konv.isi, b.sumber);
     return `<div class="bahan-row" style="padding:10px 12px;" data-i="${i}">
       <div style="display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center;">
         <span class="brow-nm">${esc(b.nama)}</span>
