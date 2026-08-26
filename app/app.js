@@ -1675,15 +1675,29 @@ function renderEditBahanBody(i){
     // Persist konversi (isi/satuan) ke material_konversi -> berlaku ke semua
     // produk yg pakai bahan ini & tetap ada setelah reload. Bahan manual
     // tidak punya baris material_konversi, cukup update lokal.
-    if (bb.konv && bb.sumber !== "manual"){
+    // Kondimen ikut dikecualikan (dulu cuma "manual"): satuannya berasal dari
+    // satuan_hasil kondimen itu sendiri, jadi menulis baris material_konversi
+    // ber-nama_normal "kondimen:<id>" cuma mengotori tabel tanpa dipakai siapa pun.
+    let konversiTersimpan = false;
+    if (bb.konv && bb.sumber !== "manual" && bb.sumber !== "kondimen"){
       simpanBtn.disabled = true; simpanBtn.textContent = "Menyimpan…";
       const { error } = await sb.from("material_konversi").upsert({ nama_normal: bb.nama_normal, nama: bb.nama, isi_per_kemasan: bb.konv.isi, satuan_pakai: bb.konv.unit }, { onConflict: "nama_normal" });
       if (error){ toast("Gagal menyimpan satuan"); console.error(error); simpanBtn.disabled = false; simpanBtn.textContent = "Simpan"; return; }
       konversiMap[bb.nama_normal] = { isi: bb.konv.isi, unit: bb.konv.unit };
+      konversiTersimpan = true;
     }
     $("#editBahanModal").classList.add("hidden");
     renderFormBahan(); recalc(); autoDraft();
-    toast("Perubahan bahan disimpan");
+    // Popup ini TIDAK menyimpan resep. Yang benar-benar masuk database di sini
+    // cuma satuan bahan (material_konversi); jumlah pakai baru tersimpan lewat
+    // tombol Simpan pada PRODUK. Dulu pesannya berbunyi "Perubahan bahan
+    // disimpan" tanpa syarat -- user wajar menyimpulkan qty ikut tersimpan,
+    // lalu berpindah halaman dan editannya hilang tanpa jejak. Terbukti di
+    // data: qty Carbonara tetap 1 dan produk_log tidak punya entri "edit"
+    // sama sekali padahal user yakin sudah menyimpan.
+    toast(konversiTersimpan
+      ? "Satuan bahan disimpan. Jumlah pakai BELUM — tekan Simpan pada produk."
+      : "Perubahan diterapkan. Tekan Simpan pada produk supaya tersimpan.");
   });
 }
 
