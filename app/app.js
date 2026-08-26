@@ -1563,8 +1563,15 @@ function renderFormBahan(){
     // tapi harga per unitnya tidak masuk akal. Koreksinya lewat tombol edit
     // baris ini (popup-nya sudah punya field isi per kemasan & satuan).
     const janggal = (b.override == null) && konvJanggal(price, unit, bahanHargaBeli(b), bahanIsi(b), b.sumber);
+    // Ikon jam yang sama seperti di baris produk. Dulu tandanya CUMA ada di
+    // daftar produk: user melihat produknya bertanda jam tapi begitu resepnya
+    // dibuka tidak ada petunjuk apa pun bahan mana yang dimaksud -- harus
+    // membuka popup tiap bahan satu per satu. Kalau harga beli / harga per
+    // satuan sudah dikunci manual, umur harga acuan tidak relevan lagi.
+    const tglB = (b.override == null && b.hargaBeliOverride == null && b.tanggal) ? infoTanggal(b.tanggal) : null;
+    const usangB = (tglB && tglB.lama) ? ` <span class="tanda-usang" title="Belanja terakhir ${tglB.hari} hari lalu (${esc(tglB.teks)}) — harga mungkin sudah berubah"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>` : "";
     return `<tr class="bahan-row" data-i="${i}">
-      <td><span class="pnm">${esc(b.nama)}</span>${janggal ? ' <span class="tanda-usang" title="Harga per unit janggal — cek isi per kemasan lewat tombol edit"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h16.9a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg></span>' : ''}</td>
+      <td><span class="pnm">${esc(b.nama)}</span>${janggal ? ' <span class="tanda-usang" title="Harga per unit janggal — cek isi per kemasan lewat tombol edit"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h16.9a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg></span>' : ''}${usangB}</td>
       <td class="r"><span class="num-val">${b.qty || 0} ${esc(unit)}</span></td>
       <td class="r"><span class="num-val">${price.toFixed(2)}</span></td>
       <td class="r"><span class="num-val hl">${rp(sub)}</span></td>
@@ -2670,6 +2677,9 @@ async function bukaKondimen(id){
         nama: b.bahan_nama || (found ? found.nama : b.bahan_nama_normal),
         nama_normal: b.bahan_nama_normal, sumber: b.sumber_bahan,
         harga: found ? found.harga : 0,
+        // Dibawa supaya baris bahan bisa menampilkan ikon jam "belanja terakhir
+        // >30 hari", sama seperti form produk. Sebelumnya tidak ikut dipetakan.
+        tanggal: (found && found.tanggal) || null,
         // Bahan sudah tidak ada di katalog mana pun (acuan/manual/kondimen).
         // Dulu diam-diam dihitung harga 0 -- bahannya jadi "gratis" dan HPP
         // kondimen terlalu murah tanpa peringatan apa pun. Ini bukan kasus
@@ -2767,7 +2777,7 @@ function renderKondimenEditor(body){
         // dijual per kemasan besar (mis. beras 25kg) keitung harganya per gram
         // padahal itu masih harga per karung. renderKondimenBahan() di bawah
         // yang menampilkan peringatan "Lengkapi satuan" kalau konv null.
-        e.bahan.push({ nama: b.nama, nama_normal: b.nama_normal, harga: b.harga, sumber: b.sumber, konv: b.konv ? {...b.konv} : null, qty: 0, override: null });
+        e.bahan.push({ nama: b.nama, nama_normal: b.nama_normal, harga: b.harga, sumber: b.sumber, tanggal: b.tanggal || null, konv: b.konv ? {...b.konv} : null, qty: 0, override: null });
         renderKondimenBahan(); refreshKondimenHpp();
       }
       cari.value = ""; hasil.classList.add("hidden");
@@ -2828,9 +2838,14 @@ function renderKondimenBahan(){
     // Konversi ADA tapi angkanya kelihatan salah. Kalau harga/satuan sudah
     // di-override manual, jangan diganggu -- itu keputusan sadar user.
     const janggal = (b.override == null) && konvJanggal(perUnit, unit, b.harga, b.konv.isi, b.sumber);
+    // Ikon jam sama seperti form produk & daftar produk -- supaya saat menyisir
+    // kondimen yang HPP-nya janggal, bahan yang harganya sudah lama langsung
+    // kelihatan tanpa perlu membuka satu per satu.
+    const tglK = (b.override == null && b.tanggal) ? infoTanggal(b.tanggal) : null;
+    const usangK = (tglK && tglK.lama) ? ` <span class="tanda-usang" title="Belanja terakhir ${tglK.hari} hari lalu (${esc(tglK.teks)}) — harga mungkin sudah berubah"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>` : "";
     return `<div class="bahan-row" style="padding:10px 12px;" data-i="${i}">
       <div style="display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center;">
-        <span class="brow-nm">${esc(b.nama)}</span>
+        <span class="brow-nm">${esc(b.nama)}${usangK}</span>
         <span style="display:flex;align-items:center;gap:6px;"><input type="number" value="${b.qty}" data-kq="${i}" style="width:80px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;text-align:right;font-size:13px;"><span style="font-size:11px;color:var(--ink-faint);">${esc(unit)}</span></span>
         <span class="brow-sub">${rp(sub)}</span>
       </div>
