@@ -1935,6 +1935,14 @@ async function openEdit(id){
       hilang: !found,
       nama_normal: r.bahan_nama_normal,
       harga: found ? found.harga : 0,
+      // WAJIB ikut dipetakan. Tanpa ini baris bahan tidak pernah bisa
+      // menampilkan ikon jam "belanja terakhir >30 hari" saat produk LAMA
+      // dibuka untuk diedit -- addBahanByNormal() (bahan yang baru ditambahkan)
+      // membawanya, openEdit() tidak, jadi tandanya cuma muncul di produk yang
+      // belum tersimpan. Ketahuan langsung dari aplikasi live: 10 bahan di form
+      // Carbonara semuanya `tanggal: undefined`, padahal "ayam" di katalog
+      // tercatat 35 hari lalu dan memang yang bikin produknya bertanda jam.
+      tanggal: (found && found.tanggal) || null,
       sumber: r.sumber_bahan || (found ? found.sumber : "acuan"),
       konv: found && found.konv ? { ...found.konv } : (konversiMap[r.bahan_nama_normal] || null),
       qty: Number(r.qty_pakai) || 0,
