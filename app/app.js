@@ -832,7 +832,7 @@ function filterSortBarHtml(){
   const cabAktif = cabangList.filter(c => c.aktif !== false);
   const cabOpts = `<option value="">Semua cabang</option>` +
     cabAktif.map(c => `<option value="${esc(c.id)}" ${filterCabangId === c.id ? "selected" : ""}>${esc(c.nama)}</option>`).join("");
-  let katOpts = `<option value="">Semua kategori</option>`;
+  let katOpts = `<option value="">Ke atas (semua)</option>`;
   const walk = (pid, depth) => katChildren(pid).forEach(k => {
     katOpts += `<option value="${esc(k.id)}" ${filterKategoriId === k.id ? "selected" : ""}>${"— ".repeat(depth)}${esc(k.nama)}</option>`;
     walk(k.id, depth + 1);
@@ -844,7 +844,7 @@ function filterSortBarHtml(){
   const adaFilter = filterCabangId || filterKategoriId || filterStatus !== "all" || sortProduk !== "kategori" || cariProduk;
   return `<div class="prod-filterbar">
     <label class="pf"><span>Cabang</span><div class="pf-sel"><select id="pfCabang">${cabOpts}</select></div></label>
-    <label class="pf"><span>Kategori</span><div class="pf-sel"><select id="pfKategori">${katOpts}</select></div></label>
+    <label class="pf"><span>Lompat ke</span><div class="pf-sel"><select id="pfKategori" title="Gulir ke kategori itu tanpa menyembunyikan kategori lain">${katOpts}</select></div></label>
     <label class="pf"><span>Status</span><div class="pf-sel"><select id="pfStatus">${statusOpts}</select></div></label>
     <label class="pf"><span>Urutkan</span><div class="pf-sel"><select id="pfSort">${sortOpts}</select></div></label>
     ${adaFilter ? `<button class="pf-reset" id="pfReset" type="button">Reset</button>` : ""}
@@ -902,14 +902,39 @@ function prodRowHtml(p, showKat){
     </td>
   </tr>`;
 }
-function prodCardHtml(title, count, rows){
-  return `<div class="prod-card">
+function prodCardHtml(title, count, rows, katKey){
+  return `<div class="prod-card"${katKey ? ` data-kat="${esc(katKey)}"` : ""}>
     <div class="prod-card-head"><span>${esc(title)}</span><span class="cnt">${count}</span></div>
     <div class="prod-table-wrap"><table class="prod-table">
       <thead><tr><th>Produk</th><th>Status</th><th>Cabang &amp; tanggal</th><th class="r">HPP</th><th class="r">Harga rekomendasi</th><th class="r">Harga jual</th><th class="r">Selisih</th><th class="r">Margin rekom</th><th class="r">Margin aktual</th><th class="r" title="Harga jual di atas HPP (basis modal)">Markup</th><th>Update terakhir</th><th></th></tr></thead>
       <tbody>${rows}</tbody>
     </table></div>
   </div>`;
+}
+// Dropdown "Lompat ke" di toolbar: gulir ke kartu kategori tanpa menyaring
+// (semua kartu kategori tetap tampil). Beda dari sidebar yang memang menyaring.
+function lompatKeKategori(id){
+  const list = $("#prodList");
+  if (!list) return;
+  const sorot = (card) => {
+    if (!card) return;
+    card.scrollIntoView({ behavior: "smooth", block: "start" });
+    card.classList.add("kat-flash");
+    setTimeout(() => card.classList.remove("kat-flash"), 1300);
+  };
+  if (!id){
+    // "Semua kategori" = kembali ke atas (hero/kartu pertama)
+    const first = list.querySelector(".prod-card");
+    if (first) first.scrollIntoView({ behavior: "smooth", block: "start" });
+    else { const h = $("#prodHero"); if (h) h.scrollIntoView({ behavior: "smooth", block: "start" }); }
+    return;
+  }
+  const path = katPathNoRoot(id);
+  const cards = Array.from(list.querySelectorAll(".prod-card[data-kat]"));
+  // cocok persis, atau kartu sub-kategori pertama di bawah kategori induk itu
+  const card = cards.find(c => c.getAttribute("data-kat") === path)
+            || cards.find(c => (c.getAttribute("data-kat") || "").startsWith(path + " ›"));
+  sorot(card);
 }
 function renderProdukList(){
   renderHero();
@@ -991,7 +1016,7 @@ function renderProdukList(){
       (grup[key] = grup[key] || []).push(p);
     });
     el.innerHTML = Object.keys(grup).sort().map(key =>
-      prodCardHtml(key, grup[key].length, grup[key].map(p => prodRowHtml(p, false)).join(""))
+      prodCardHtml(key, grup[key].length, grup[key].map(p => prodRowHtml(p, false)).join(""), key)
     ).join("");
   } else {
     const urut = urutkanProduk(list);
@@ -1122,7 +1147,7 @@ function pasangToolbar(){
   const pfc = $("#pfCabang");
   if (pfc) pfc.addEventListener("change", (e) => pilihCabang(e.target.value)); // setir fokus cabang global (sinkron dgn top bar)
   const pfk = $("#pfKategori");
-  if (pfk) pfk.addEventListener("change", (e) => { filterKategoriId = e.target.value; renderProdukList(); });
+  if (pfk) pfk.addEventListener("change", (e) => lompatKeKategori(e.target.value)); // lompat, BUKAN saring -- semua kartu kategori tetap tampil
   const pfs = $("#pfStatus");
   if (pfs) pfs.addEventListener("change", (e) => { filterStatus = e.target.value; renderProdukList(); });
   const pfso = $("#pfSort");
