@@ -277,6 +277,10 @@
      sekarang pindah ke dalam #viewList. */
   .app-chrome{
     position:relative;
+    /* z-index supaya dropdown cabang (di dalam header) menimpa konten
+       #fnbSection yang jadi sibling setelahnya -- tanpa ini menu bisa
+       tertutup tabel di bawahnya. */
+    z-index:30;
     /* Gradient hijau semi-transparan (bukan warna rata) -- warna rata 60% di
        atas background halaman yg terang mencuci jadi "hijau muda pucat".
        Gradient + alpha ~0.82 + saturate bikin tetap hijau pekat berisi tapi
@@ -289,7 +293,11 @@
     border:1px solid rgba(255,255,255,0.16);
     border-radius:18px;
     box-shadow:0 20px 40px -22px rgba(10,40,25,0.4), 0 0 0 1px rgba(255,255,255,0.06) inset;
-    overflow:hidden;
+    /* visible (bukan hidden) supaya dropdown pemilih cabang di header bisa
+       terbuka ke bawah tanpa terpotong. Diuji: backdrop-filter tidak ikut
+       meng-clip anak absolut. Header/tabs tidak menonjol ke sudut, jadi
+       tampilan kaca tetap sama. */
+    overflow:visible;
     padding:12px 20px;
     margin-bottom:16px;
   }
@@ -828,6 +836,7 @@
           </div>
         </div>
         <div class="header-actions">
+          <div class="hero-cab header-cab"></div>
           <div class="user-chip">
             <span class="avatar" id="userAvatar">H</span>
             <span id="userEmail">—</span>

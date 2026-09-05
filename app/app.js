@@ -182,8 +182,12 @@ function isiCabangPicker(){
 function pilihCabang(id){
   filterCabangId = id || "";
   try{ localStorage.setItem("hpp_fokus_cabang", filterCabangId); }catch(e){}
+  // Fokus cabang global. Render ulang halaman yang memang terpengaruh cabang
+  // (Produk & Dashboard); halaman lain (Bahan/Kondimen/Pengaturan) lintas-cabang
+  // jadi cukup update label tombolnya di header.
   if (currentTab === "dash") renderDashboard();
-  else renderProdukList();
+  else if (currentTab === "list") renderProdukList();
+  else renderCabangDropdown();
 }
 function renderCabangDropdown(){
   const wraps = document.querySelectorAll(".hero-cab");
@@ -741,7 +745,6 @@ function renderHero(){
         <div class="hero-sub">${cabFokus ? "Fokus cabang · HPP & harga jual" : "Kelola HPP & harga jual makanan-minuman"}</div>
       </div>
       <div class="hero-right">
-        <div class="hero-cab"></div>
         ${rugi ? `<div class="hero-alert">⚠ ${rugi} produk rugi</div>` : (sehat && !belum ? `<div class="hero-ok">✓ Semua sehat</div>` : "")}
       </div>
     </div>
@@ -2091,7 +2094,6 @@ function renderDashboard(){
           <h1 class="dash-hero-title">${cabFokusNama ? esc(cabFokusNama) : "Dashboard HPP Elio"}</h1>
           <p class="dash-hero-sub">${cabFokusNama ? "Ringkasan performa produk &amp; margin cabang ini." : "Ringkasan performa produk &amp; margin seluruh cabang."}</p>
         </div>
-        <div class="hero-cab"></div>
       </div>
     </div>
 
@@ -2243,6 +2245,7 @@ function switchTab(tab){
   else if (tab === "dash") renderDashboard();
   else if (tab === "bahan") renderBahanView();
   renderSidebar();
+  renderCabangDropdown(); // pemilih cabang di top bar tampil di semua tab
 }
 
 // =====================================================================
