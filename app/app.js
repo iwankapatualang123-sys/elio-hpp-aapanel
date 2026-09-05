@@ -1341,19 +1341,21 @@ function renderAddView(){
       </div>
     </div>
 
-    <div class="card">
-      <button class="btn btn-sm" id="f-back" style="margin-bottom:12px;">← Kembali</button>
-      <div class="field">
-        <label>Nama produk</label>
-        <input type="text" id="f-nama" placeholder="Nasi goreng ikan asin">
-      </div>
-      <div class="field">
-        <label>Kategori</label>
-        <div id="f-kat-tingkat"></div>
-      </div>
-      <div class="field">
-        <label>Cabang</label>
-        <select id="f-cabang">${cabangList.filter(c => c.aktif).map(c => `<option value="${c.id}">${esc(c.nama)}</option>`).join("")}</select>
+    <div class="card form-head-card">
+      <button class="btn btn-sm" id="f-back">← Kembali</button>
+      <div class="form-head-grid">
+        <div class="field">
+          <label>Nama produk</label>
+          <input type="text" id="f-nama" placeholder="Nasi goreng ikan asin">
+        </div>
+        <div class="field">
+          <label>Kategori</label>
+          <div id="f-kat-tingkat"></div>
+        </div>
+        <div class="field">
+          <label>Cabang</label>
+          <select id="f-cabang">${cabangList.filter(c => c.aktif).map(c => `<option value="${c.id}">${esc(c.nama)}</option>`).join("")}</select>
+        </div>
       </div>
     </div>
 
