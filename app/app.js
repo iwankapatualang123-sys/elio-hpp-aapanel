@@ -550,10 +550,26 @@ function statusFromMargin(hpp, harga){
   return { cls: "status-sehat", txt: "Sehat", margin };
 }
 let filterKategoriId = "";
-let filterStatus = "all";  // all | sudah | belum
+let filterStatus = "all";  // all | sudah | belum | sehat | tipis | rugi
 let filterCabangId = "";   // "" = semua cabang
 let dashCabang = "";       // filter cabang khusus dashboard
 let cariProduk = "";
+// Urutan daftar produk. "kategori" = tetap dikelompokkan jadi kartu per kategori
+// (perilaku lama). Nilai lain = SATU tabel rata, diurutkan menurut kolomnya
+// (HPP, margin, markup, dst) lintas kategori. Disimpan antar-sesi.
+let sortProduk = "kategori";
+try{ const _sp = localStorage.getItem("hpp_sort_produk"); if (_sp) sortProduk = _sp; }catch(e){}
+const SORT_OPTS = [
+  ["kategori", "Kelompok kategori"],
+  ["nama", "Nama A–Z"],
+  ["hpp-desc", "HPP tertinggi"],
+  ["hpp-asc", "HPP terendah"],
+  ["margin-desc", "Margin aktual tertinggi"],
+  ["margin-asc", "Margin aktual terendah"],
+  ["markup-desc", "Markup tertinggi"],
+  ["selisih-asc", "Selisih terjauh dari rekom"],
+  ["update-desc", "Update terbaru"],
+];
 let currentTab = "list";
 
 // Menu navigasi utama -- dulu tab di top bar, sekarang pindah ke ATAS sidebar
@@ -715,6 +731,11 @@ function produkCocokFilter(p){
   // filter status
   if (filterStatus === "belum") return produkBelumDiisi(p);
   if (filterStatus === "sudah") return !produkBelumDiisi(p);
+  if (filterStatus === "sehat" || filterStatus === "tipis" || filterStatus === "rugi"){
+    if (produkBelumDiisi(p)) return false;
+    const st = statusFromMargin(Number(p.hpp_terakhir), Number(p.harga_jual_disarankan));
+    return !!st && st.cls === "status-" + filterStatus;
+  }
   return true;
 }
 function renderHero(){
@@ -766,6 +787,130 @@ function renderHero(){
   }));
   renderCabangDropdown();
 }
+// Angka satu produk untuk pengurutan -- SATU sumber, sama dengan yang dipakai
+// baris tabel, supaya urutan & tampilan tidak pernah beda.
+function produkMetrik(p){
+  const belum = produkBelumDiisi(p);
+  const rekom = Number(p.harga_jual_disarankan) || 0;
+  const hpp = Number(p.hpp_terakhir) || 0;
+  const hargaEfektif = (p.harga_jual_aktual !== null && p.harga_jual_aktual !== undefined) ? Number(p.harga_jual_aktual) : rekom;
+  const selisih = Math.round(hargaEfektif - rekom);
+  const marginAktual = hargaEfektif > 0 ? (hargaEfektif - hpp) / hargaEfektif * 100 : null;
+  const markup = hpp > 0 ? (hargaEfektif - hpp) / hpp * 100 : null;
+  return { belum, rekom, hpp, hargaEfektif, selisih, marginAktual, markup };
+}
+function urutkanProduk(arr){
+  const a = arr.slice();
+  // produk belum diisi tidak punya angka -> selalu didorong ke bawah pada sort numerik
+  const cmpNum = (x, y, get, dir) => {
+    const mx = produkMetrik(x), my = produkMetrik(y);
+    if (mx.belum && my.belum) return x.nama.localeCompare(y.nama);
+    if (mx.belum) return 1;
+    if (my.belum) return -1;
+    const vx = get(mx), vy = get(my);
+    if (vx == null && vy == null) return x.nama.localeCompare(y.nama);
+    if (vx == null) return 1;
+    if (vy == null) return -1;
+    return vx === vy ? x.nama.localeCompare(y.nama) : dir * (vy - vx);
+  };
+  switch (sortProduk){
+    case "nama": a.sort((x, y) => x.nama.localeCompare(y.nama)); break;
+    case "hpp-desc": a.sort((x, y) => cmpNum(x, y, m => m.hpp, 1)); break;
+    case "hpp-asc": a.sort((x, y) => cmpNum(x, y, m => m.hpp, -1)); break;
+    case "margin-desc": a.sort((x, y) => cmpNum(x, y, m => m.marginAktual, 1)); break;
+    case "margin-asc": a.sort((x, y) => cmpNum(x, y, m => m.marginAktual, -1)); break;
+    case "markup-desc": a.sort((x, y) => cmpNum(x, y, m => m.markup, 1)); break;
+    case "selisih-asc": a.sort((x, y) => cmpNum(x, y, m => m.selisih, -1)); break; // paling jauh di bawah rekom dulu
+    case "update-desc": a.sort((x, y) => new Date(y.updated_at || 0) - new Date(x.updated_at || 0)); break;
+  }
+  return a;
+}
+// Baris toolbar ke-2: filter (cabang/kategori/status) + urutkan. Semua pakai
+// <select> asli biar anti-nyangkut. Cabang di sini menyetir fokus cabang global
+// yang sama dengan tombol di top bar -- keduanya sinkron lewat filterCabangId.
+function filterSortBarHtml(){
+  const cabAktif = cabangList.filter(c => c.aktif !== false);
+  const cabOpts = `<option value="">Semua cabang</option>` +
+    cabAktif.map(c => `<option value="${esc(c.id)}" ${filterCabangId === c.id ? "selected" : ""}>${esc(c.nama)}</option>`).join("");
+  let katOpts = `<option value="">Semua kategori</option>`;
+  const walk = (pid, depth) => katChildren(pid).forEach(k => {
+    katOpts += `<option value="${esc(k.id)}" ${filterKategoriId === k.id ? "selected" : ""}>${"— ".repeat(depth)}${esc(k.nama)}</option>`;
+    walk(k.id, depth + 1);
+  });
+  walk(katRootFnb(), 0);
+  const statusOpts = [["all", "Semua status"], ["sehat", "Sehat"], ["tipis", "Margin tipis"], ["rugi", "Rugi"], ["sudah", "Sudah diisi"], ["belum", "Belum diisi"]]
+    .map(([v, t]) => `<option value="${v}" ${filterStatus === v ? "selected" : ""}>${t}</option>`).join("");
+  const sortOpts = SORT_OPTS.map(([v, t]) => `<option value="${v}" ${sortProduk === v ? "selected" : ""}>${t}</option>`).join("");
+  const adaFilter = filterCabangId || filterKategoriId || filterStatus !== "all" || sortProduk !== "kategori" || cariProduk;
+  return `<div class="prod-filterbar">
+    <label class="pf"><span>Cabang</span><div class="pf-sel"><select id="pfCabang">${cabOpts}</select></div></label>
+    <label class="pf"><span>Kategori</span><div class="pf-sel"><select id="pfKategori">${katOpts}</select></div></label>
+    <label class="pf"><span>Status</span><div class="pf-sel"><select id="pfStatus">${statusOpts}</select></div></label>
+    <label class="pf"><span>Urutkan</span><div class="pf-sel"><select id="pfSort">${sortOpts}</select></div></label>
+    ${adaFilter ? `<button class="pf-reset" id="pfReset" type="button">Reset</button>` : ""}
+  </div>`;
+}
+// Satu baris tabel produk. showKat=true menambah label kategori di bawah nama
+// (dipakai saat tampilan rata/terurut, karena tidak ada lagi kartu per kategori).
+function prodRowHtml(p, showKat){
+  const cab = cabangList.find(c => c.id === p.cabang_hpp_id);
+  const belum = produkBelumDiisi(p);
+  const st = statusFromMargin(Number(p.hpp_terakhir), Number(p.harga_jual_disarankan));
+  const tgl = infoTanggal(p.created_at).teks;
+  const edge = belum ? "edge-belum" : st ? (st.cls === "status-rugi" ? "edge-rugi" : st.cls === "status-tipis" ? "edge-tipis" : "edge-sehat") : "";
+  let tren = "";
+  if (!belum && p._tren === "naik") tren = `<span class="tren tren-naik" title="HPP naik ${Math.abs(p._trenPersen)}% dari sebelumnya">▲ ${Math.abs(p._trenPersen)}%</span>`;
+  else if (!belum && p._tren === "turun") tren = `<span class="tren tren-turun" title="HPP turun ${Math.abs(p._trenPersen)}% dari sebelumnya">▼ ${Math.abs(p._trenPersen)}%</span>`;
+  const usangTitle = p._bahanUsang ? esc(p._bahanUsang.join(", ")).replace(/"/g, "&quot;") : "";
+  const usang = (!belum && p._bahanUsang) ? `<span class="tanda-usang" title="Belanja terakhir bahan ini sudah lewat 30 hari, harga mungkin sudah berubah — ${usangTitle}"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>` : "";
+  const takHitungTitle = p._takTerhitung ? esc(p._takTerhitung.join(", ")).replace(/"/g, "&quot;") : "";
+  const takHitung = p._takTerhitung ? `<span class="tanda-usang" style="color:var(--red);" title="HPP tidak ikut diperbarui otomatis — ${takHitungTitle}"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h16.9a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg></span>` : "";
+  const statusHtml = belum
+    ? `<span class="status-pill status-belum"><svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h16.9a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>Belum diisi</span>`
+    : (st ? `<span class="status-pill ${st.cls}">${st.txt}</span>` : "");
+  const rekom = Number(p.harga_jual_disarankan) || 0;
+  const hargaEfektif = (p.harga_jual_aktual !== null && p.harga_jual_aktual !== undefined) ? Number(p.harga_jual_aktual) : rekom;
+  const selisihNom = Math.round(hargaEfektif - rekom);
+  const persenRekom = rekom > 0 ? Math.round((hargaEfektif / rekom) * 100) : null;
+  const selisihHtml = belum ? "—" : (selisihNom === 0
+    ? `<span class="num-val">Rp 0</span><div class="sub-note">100% dr rekom</div>`
+    : `<span class="num-val">${selisihNom > 0 ? "+" : "-"}${rp(Math.abs(selisihNom))}</span><div class="sub-note">${persenRekom != null ? persenRekom + "% dr rekom" : ""}</div>`);
+  const hppNum = Number(p.hpp_terakhir) || 0;
+  const marginRekom = rekom > 0 ? Math.round((rekom - hppNum) / rekom * 100) : null;
+  const marginAktual = hargaEfektif > 0 ? Math.round((hargaEfektif - hppNum) / hargaEfektif * 100) : null;
+  const markup = hppNum > 0 ? Math.round((hargaEfektif - hppNum) / hppNum * 100) : null;
+  const updateTgl = infoTanggal(p.updated_at).teks;
+  const katLabel = showKat ? `<div class="ct-tgl">${esc(p.kategori_id ? katPathNoRoot(p.kategori_id) : "Tanpa kategori")}</div>` : "";
+  return `<tr class="prod-row ${belum ? "belum" : ""} ${edge}" data-id="${esc(p.id)}">
+    <td><span class="pnm">${esc(p.nama)}</span>${usang}${takHitung}${katLabel}</td>
+    <td>${statusHtml}</td>
+    <td>
+      ${cab ? `<div class="ct-cab">${esc(cab.nama)}</div>` : ""}
+      <div class="ct-tgl">${tgl}</div>
+    </td>
+    <td class="r"><span class="num-val">${belum ? "—" : rp(p.hpp_terakhir)}</span>${tren}</td>
+    <td class="r"><span class="num-val">${belum ? "—" : rp(rekom)}</span></td>
+    <td class="r"><span class="num-val hl">${belum ? "—" : rp(hargaEfektif)}</span></td>
+    <td class="r">${selisihHtml}</td>
+    <td class="r"><span class="num-val">${marginRekom == null ? "—" : marginRekom + "%"}</span></td>
+    <td class="r"><span class="num-val">${marginAktual == null ? "—" : marginAktual + "%"}</span></td>
+    <td class="r"><span class="num-val">${markup == null ? "—" : markup + "%"}</span></td>
+    <td><div class="ct-tgl">${belum ? "—" : updateTgl}</div></td>
+    <td class="r">
+      <button class="prod-dup" data-dup="${esc(p.id)}" title="Duplikat produk"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button>
+      <button class="prod-dup" data-log="${esc(p.id)}" title="Log perubahan"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></button>
+    </td>
+  </tr>`;
+}
+function prodCardHtml(title, count, rows){
+  return `<div class="prod-card">
+    <div class="prod-card-head"><span>${esc(title)}</span><span class="cnt">${count}</span></div>
+    <div class="prod-table-wrap"><table class="prod-table">
+      <thead><tr><th>Produk</th><th>Status</th><th>Cabang &amp; tanggal</th><th class="r">HPP</th><th class="r">Harga rekomendasi</th><th class="r">Harga jual</th><th class="r">Selisih</th><th class="r">Margin rekom</th><th class="r">Margin aktual</th><th class="r" title="Harga jual di atas HPP (basis modal)">Markup</th><th>Update terakhir</th><th></th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>
+  </div>`;
+}
 function renderProdukList(){
   renderHero();
   renderSidebar();
@@ -799,7 +944,7 @@ function renderProdukList(){
     } else {
       rich = `<div class="empty-rich"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3h18v18H3z"/></svg></div><h3>Kosong</h3><p>${filterStatus === "sudah" ? "Belum ada produk yang diisi." : "Tidak ada produk di kategori ini."}</p></div>`;
     }
-    $("#prodListTop").innerHTML = toolbar;
+    $("#prodListTop").innerHTML = toolbar + filterSortBarHtml();
     el.innerHTML = rich;
     pasangToolbar();
     const ea = $("#empty-add"); if (ea) ea.addEventListener("click", () => { editingProdukId = null; switchTab("add"); });
@@ -835,86 +980,25 @@ function renderProdukList(){
     </div>`;
   }
 
-  // kelompokkan per kategori (path tanpa FNB)
-  const grup = {};
-  list.forEach(p => {
-    const key = p.kategori_id ? katPathNoRoot(p.kategori_id) : "Tanpa kategori";
-    (grup[key] = grup[key] || []).push(p);
-  });
-  el.innerHTML = Object.keys(grup).sort().map(key => {
-    const rows = grup[key].map(p => {
-      const cab = cabangList.find(c => c.id === p.cabang_hpp_id);
-      const belum = produkBelumDiisi(p);
-      const st = statusFromMargin(Number(p.hpp_terakhir), Number(p.harga_jual_disarankan));
-      const tgl = infoTanggal(p.created_at).teks;
-      // kelas garis tepi berdasar margin
-      const edge = belum ? "edge-belum" : st ? (st.cls === "status-rugi" ? "edge-rugi" : st.cls === "status-tipis" ? "edge-tipis" : "edge-sehat") : "";
-      // panah tren HPP
-      let tren = "";
-      if (!belum && p._tren === "naik") tren = `<span class="tren tren-naik" title="HPP naik ${Math.abs(p._trenPersen)}% dari sebelumnya">▲ ${Math.abs(p._trenPersen)}%</span>`;
-      else if (!belum && p._tren === "turun") tren = `<span class="tren tren-turun" title="HPP turun ${Math.abs(p._trenPersen)}% dari sebelumnya">▼ ${Math.abs(p._trenPersen)}%</span>`;
-      // tanda bahan usang
-      // Tooltip menyebut bahannya satu per satu (bukan cuma "ada bahan yang
-      // usang") supaya bisa langsung ditindaklanjuti. Sama seperti takHitung
-      // di bawah, esc() tidak meng-escape kutip ganda padahal ini masuk ke
-      // dalam atribut title="...".
-      const usangTitle = p._bahanUsang ? esc(p._bahanUsang.join(", ")).replace(/"/g, "&quot;") : "";
-      const usang = (!belum && p._bahanUsang) ? `<span class="tanda-usang" title="Belanja terakhir bahan ini sudah lewat 30 hari, harga mungkin sudah berubah — ${usangTitle}"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>` : "";
-      // esc() tidak meng-escape tanda kutip ganda, sedangkan ini masuk ke dalam
-      // atribut title="..." -- nama bahan dari data belanja bisa saja memuatnya
-      // (mis. cup 12"), dan itu akan merusak atributnya.
-      const takHitungTitle = p._takTerhitung ? esc(p._takTerhitung.join(", ")).replace(/"/g, "&quot;") : "";
-      const takHitung = p._takTerhitung ? `<span class="tanda-usang" style="color:var(--red);" title="HPP tidak ikut diperbarui otomatis — ${takHitungTitle}"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h16.9a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg></span>` : "";
-      const statusHtml = belum
-        ? `<span class="status-pill status-belum"><svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h16.9a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>Belum diisi</span>`
-        : (st ? `<span class="status-pill ${st.cls}">${st.txt}</span>` : "");
-      // harga jual efektif = aktual kalau diisi, else ikut rekomendasi -- selisih & persen dihitung dari nilai ini
-      const rekom = Number(p.harga_jual_disarankan) || 0;
-      const hargaEfektif = (p.harga_jual_aktual !== null && p.harga_jual_aktual !== undefined) ? Number(p.harga_jual_aktual) : rekom;
-      const selisihNom = Math.round(hargaEfektif - rekom);
-      const persenRekom = rekom > 0 ? Math.round((hargaEfektif / rekom) * 100) : null;
-      const selisihHtml = belum ? "—" : (selisihNom === 0
-        ? `<span class="num-val">Rp 0</span><div class="sub-note">100% dr rekom</div>`
-        : `<span class="num-val">${selisihNom > 0 ? "+" : "-"}${rp(Math.abs(selisihNom))}</span><div class="sub-note">${persenRekom != null ? persenRekom + "% dr rekom" : ""}</div>`);
-      // margin dihitung ulang dari HPP vs masing2 harga -- bukan cuma echo target_margin_persen,
-      // supaya "margin rekom" & "margin aktual" akurat sekalipun beda dari target aslinya
-      const hppNum = Number(p.hpp_terakhir) || 0;
-      const marginRekom = rekom > 0 ? Math.round((rekom - hppNum) / rekom * 100) : null;
-      const marginAktual = hargaEfektif > 0 ? Math.round((hargaEfektif - hppNum) / hargaEfektif * 100) : null;
-      // Markup = berapa % harga jual DI ATAS HPP (basis modal), beda dari margin
-      // (basis harga). Cappucino jual 16.746 modal 6.698 -> markup 150%.
-      const markup = hppNum > 0 ? Math.round((hargaEfektif - hppNum) / hppNum * 100) : null;
-      const updateTgl = infoTanggal(p.updated_at).teks;
-      return `<tr class="prod-row ${belum ? "belum" : ""} ${edge}" data-id="${esc(p.id)}">
-        <td><span class="pnm">${esc(p.nama)}</span>${usang}${takHitung}</td>
-        <td>${statusHtml}</td>
-        <td>
-          ${cab ? `<div class="ct-cab">${esc(cab.nama)}</div>` : ""}
-          <div class="ct-tgl">${tgl}</div>
-        </td>
-        <td class="r"><span class="num-val">${belum ? "—" : rp(p.hpp_terakhir)}</span>${tren}</td>
-        <td class="r"><span class="num-val">${belum ? "—" : rp(rekom)}</span></td>
-        <td class="r"><span class="num-val hl">${belum ? "—" : rp(hargaEfektif)}</span></td>
-        <td class="r">${selisihHtml}</td>
-        <td class="r"><span class="num-val">${marginRekom == null ? "—" : marginRekom + "%"}</span></td>
-        <td class="r"><span class="num-val">${marginAktual == null ? "—" : marginAktual + "%"}</span></td>
-        <td class="r"><span class="num-val">${markup == null ? "—" : markup + "%"}</span></td>
-        <td><div class="ct-tgl">${belum ? "—" : updateTgl}</div></td>
-        <td class="r">
-          <button class="prod-dup" data-dup="${esc(p.id)}" title="Duplikat produk"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button>
-          <button class="prod-dup" data-log="${esc(p.id)}" title="Log perubahan"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></button>
-        </td>
-      </tr>`;
-    }).join("");
-    return `<div class="prod-card">
-      <div class="prod-card-head"><span>${esc(key)}</span><span class="cnt">${grup[key].length}</span></div>
-      <div class="prod-table-wrap"><table class="prod-table">
-        <thead><tr><th>Produk</th><th>Status</th><th>Cabang &amp; tanggal</th><th class="r">HPP</th><th class="r">Harga rekomendasi</th><th class="r">Harga jual</th><th class="r">Selisih</th><th class="r">Margin rekom</th><th class="r">Margin aktual</th><th class="r" title="Harga jual di atas HPP (basis modal)">Markup</th><th>Update terakhir</th><th></th></tr></thead>
-        <tbody>${rows}</tbody>
-      </table></div>
-    </div>`;
-  }).join("");
-  $("#prodListTop").innerHTML = toolbar + dash;
+  // Susun isi tabel. Default ("kategori") = tetap dikelompokkan jadi kartu per
+  // kategori (urut abjad kategori). Kalau user memilih urutan lain, tampilkan
+  // SATU tabel rata yang terurut lintas kategori (nama kategori ikut di bawah
+  // nama produk lewat showKat, karena kartu per-kategori sudah tidak ada).
+  if (sortProduk === "kategori"){
+    const grup = {};
+    list.forEach(p => {
+      const key = p.kategori_id ? katPathNoRoot(p.kategori_id) : "Tanpa kategori";
+      (grup[key] = grup[key] || []).push(p);
+    });
+    el.innerHTML = Object.keys(grup).sort().map(key =>
+      prodCardHtml(key, grup[key].length, grup[key].map(p => prodRowHtml(p, false)).join(""))
+    ).join("");
+  } else {
+    const urut = urutkanProduk(list);
+    const label = (SORT_OPTS.find(o => o[0] === sortProduk) || [null, ""])[1];
+    el.innerHTML = prodCardHtml(`Semua produk · ${label}`, urut.length, urut.map(p => prodRowHtml(p, true)).join(""));
+  }
+  $("#prodListTop").innerHTML = toolbar + filterSortBarHtml() + dash;
   pasangToolbar();
   $all(".prod-row", el).forEach(it => it.addEventListener("click", (e) => {
     if (e.target.closest(".prod-dup")) return;
@@ -1034,6 +1118,21 @@ function pasangToolbar(){
   if (upd) upd.addEventListener("click", updateSemuaHarga);
   const tmb = $("#btnTambahProduk");
   if (tmb) tmb.addEventListener("click", () => { editingProdukId = null; switchTab("add"); });
+  // baris filter + urutkan
+  const pfc = $("#pfCabang");
+  if (pfc) pfc.addEventListener("change", (e) => pilihCabang(e.target.value)); // setir fokus cabang global (sinkron dgn top bar)
+  const pfk = $("#pfKategori");
+  if (pfk) pfk.addEventListener("change", (e) => { filterKategoriId = e.target.value; renderProdukList(); });
+  const pfs = $("#pfStatus");
+  if (pfs) pfs.addEventListener("change", (e) => { filterStatus = e.target.value; renderProdukList(); });
+  const pfso = $("#pfSort");
+  if (pfso) pfso.addEventListener("change", (e) => { sortProduk = e.target.value; try{ localStorage.setItem("hpp_sort_produk", sortProduk); }catch(_){ } renderProdukList(); });
+  const pfr = $("#pfReset");
+  if (pfr) pfr.addEventListener("click", () => {
+    filterKategoriId = ""; filterStatus = "all"; sortProduk = "kategori"; cariProduk = ""; filterCabangId = "";
+    try{ localStorage.setItem("hpp_fokus_cabang", ""); localStorage.setItem("hpp_sort_produk", "kategori"); }catch(_){ }
+    renderProdukList();
+  });
 }
 
 // Hitung ulang HPP semua produk (dan kondimen yang jadi bahannya) pakai

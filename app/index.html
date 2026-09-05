@@ -432,7 +432,18 @@
   .prod-item.belum:hover{ border-color:var(--amber); border-left-color:var(--amber); }
 
   /* TOOLBAR CARI + EKSPOR */
-  .prod-toolbar{ display:flex; gap:10px; align-items:center; margin-bottom:14px; }
+  .prod-toolbar{ display:flex; gap:10px; align-items:center; margin-bottom:10px; }
+  /* Baris ke-2 toolbar produk: filter (cabang/kategori/status) + urutkan */
+  .prod-filterbar{ display:flex; flex-wrap:wrap; gap:10px 12px; align-items:flex-end; margin-bottom:14px; }
+  .prod-filterbar .pf{ display:flex; flex-direction:column; gap:4px; font-size:10px; font-weight:800; color:var(--ink-faint); text-transform:uppercase; letter-spacing:0.04em; }
+  .prod-filterbar .pf-sel{ position:relative; }
+  .prod-filterbar .pf-sel::after{ content:""; position:absolute; right:11px; top:calc(50% - 2px); width:7px; height:7px; border-right:2px solid var(--ink-faint); border-bottom:2px solid var(--ink-faint); transform:translateY(-50%) rotate(45deg); pointer-events:none; }
+  .prod-filterbar select{ appearance:none; -webkit-appearance:none; background:var(--surface); border:1px solid var(--line); border-radius:9px; padding:8px 30px 8px 11px; font-size:13px; font-weight:600; color:var(--ink); cursor:pointer; min-width:158px; box-shadow:var(--shadow-sm); }
+  .prod-filterbar select:hover{ border-color:var(--green); }
+  .prod-filterbar select:focus{ outline:none; border-color:var(--green); box-shadow:0 0 0 3px var(--green-light); }
+  .prod-filterbar .pf-reset{ align-self:flex-end; background:var(--panel); border:1px solid var(--line); border-radius:9px; padding:0 14px; height:37px; font-size:13px; font-weight:700; color:var(--ink-soft); cursor:pointer; transition:all .12s; }
+  .prod-filterbar .pf-reset:hover{ background:var(--red-light); color:var(--red); border-color:var(--red-light); }
+  @media (max-width:820px){ .prod-filterbar .pf{ flex:1 1 calc(50% - 6px); } .prod-filterbar select{ min-width:0; width:100%; } }
   .search-box{ flex:1; display:flex; align-items:center; gap:8px; background:var(--surface); border:1px solid var(--line); border-radius:9px; padding:0 12px; box-shadow:var(--shadow-sm); }
   .search-box svg{ width:16px; height:16px; color:var(--ink-faint); flex-shrink:0; }
   .search-box input{ flex:1; border:0; background:transparent; padding:10px 0; font-size:14px; outline:none; color:var(--ink); }
