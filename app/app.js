@@ -1125,6 +1125,140 @@ function exportPdf(){
   setTimeout(() => { w.focus(); w.print(); }, 350);
 }
 
+// Cetak "Work Instruction" dapur (PDF) dari form produk yang sedang dibuka:
+// identitas produk + tabel bahan & takaran (TANPA harga -- ini berkas dapur,
+// bukan dokumen biaya) + langkah pembuatan berwarna sesuai level + kolom
+// tanda tangan. Pola sama seperti exportPdf: buka jendela lalu print (user
+// pilih "Simpan sebagai PDF").
+function cetakWorkInstruction(){
+  const nama = (($("#f-nama") && $("#f-nama").value.trim()) || "(Tanpa nama)");
+  const katNama = formKategoriId ? katPathNoRoot(formKategoriId) : "—";
+  let cabNama = "—";
+  const cabSel = $("#f-cabang");
+  if (cabSel){
+    const c = cabangList.find(x => x.id === cabSel.value);
+    cabNama = c ? c.nama : (cabSel.options[cabSel.selectedIndex] ? cabSel.options[cabSel.selectedIndex].text : "—");
+  }
+  const steps = formProses.filter(s => (s.teks || "").trim());
+  if (!formBahan.length && !steps.length){ toast("Isi bahan / langkah dulu sebelum cetak"); return; }
+
+  const bahanRows = formBahan.length ? formBahan.map((b, idx) => {
+    const isKond = b.sumber === "kondimen" || (b.nama_normal || "").startsWith("kondimen:");
+    const namaBersih = esc((b.nama || "").replace(/^★\s*/, ""));
+    const unit = b.hilang ? "" : effUnit(b);
+    const takaran = `${b.qty || 0}${unit ? " " + esc(unit) : ""}`;
+    let cat = "";
+    if (b.hilang) cat = "Bahan tak terdaftar — cek gudang";
+    else if (!b.konv) cat = "Satuan belum lengkap";
+    else if (isKond) cat = "Sub-resep (kondimen)";
+    return `<tr>
+      <td class="no">${idx + 1}</td>
+      <td>${namaBersih}${isKond ? ' <span class="kond">kondimen</span>' : ""}</td>
+      <td class="tk">${takaran}</td>
+      <td class="ct">${cat}</td>
+    </tr>`;
+  }).join("") : `<tr><td colspan="4" class="kosong">Belum ada bahan.</td></tr>`;
+
+  const stepRows = steps.length ? steps.map((s, i) => {
+    const lv = PROSES_LEVEL[s.level] || PROSES_LEVEL.normal;
+    return `<div class="step" style="border-left-color:${lv.warna};background:${lv.bg};">
+      <div class="sno" style="background:${lv.warna};">${i + 1}</div>
+      <div class="sbody">
+        <div class="steks">${esc(s.teks)}</div>
+        ${s.level !== "normal" ? `<span class="slv" style="color:${lv.warna};">${lv.label}</span>` : ""}
+      </div>
+    </div>`;
+  }).join("") : `<div class="kosong" style="padding:10px 2px;">Belum ada langkah proses. Isi lewat "Cara Proses" agar berkas ini lengkap.</div>`;
+
+  const legend = Object.keys(PROSES_LEVEL).map(k => {
+    const lv = PROSES_LEVEL[k];
+    return `<span class="lg"><i style="background:${lv.warna};"></i>${lv.label}</span>`;
+  }).join("");
+
+  const tgl = new Date();
+  const tglCetak = tgl.toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
+  const slug = (nama.toUpperCase().replace(/[^A-Z0-9]+/g, "-").replace(/^-|-$/g, "") || "PRODUK").slice(0, 22);
+  const docNo = `WI-KIT-${slug}-${tgl.getFullYear()}${String(tgl.getMonth() + 1).padStart(2, "0")}`;
+
+  const html = `<!DOCTYPE html><html lang="id"><head><meta charset="utf-8"><title>Work Instruction — ${esc(nama)}</title>
+  <style>
+    @page{ size:A4; margin:13mm; }
+    *{ box-sizing:border-box; }
+    body{ font-family:Arial,Helvetica,sans-serif; color:#1a1a1a; margin:0; font-size:12px; line-height:1.45; }
+    .band{ background:#0F5132; color:#fff; padding:14px 18px; border-radius:8px; display:flex; justify-content:space-between; align-items:center; }
+    .band h1{ font-size:19px; margin:0; letter-spacing:.5px; }
+    .band .sub{ font-size:11px; opacity:.85; margin-top:2px; }
+    .band .brand{ text-align:right; font-size:13px; font-weight:700; }
+    .band .brand small{ display:block; font-weight:400; opacity:.8; font-size:10px; }
+    .meta{ width:100%; border-collapse:collapse; margin:12px 0 4px; font-size:11.5px; }
+    .meta td{ border:1px solid #cfd8d3; padding:6px 9px; }
+    .meta .k{ background:#EAF1EC; font-weight:700; color:#0A3D26; width:15%; white-space:nowrap; }
+    h2.sec{ font-size:13px; color:#0F5132; margin:18px 0 8px; padding-bottom:4px; border-bottom:2px solid #0F5132; text-transform:uppercase; letter-spacing:.4px; }
+    table.bahan{ width:100%; border-collapse:collapse; font-size:12px; }
+    table.bahan th{ background:#0F5132; color:#fff; text-align:left; padding:7px 9px; font-size:11px; }
+    table.bahan td{ padding:7px 9px; border-bottom:1px solid #e3e8e5; vertical-align:top; }
+    table.bahan tr:nth-child(even) td{ background:#f6f9f7; }
+    table.bahan td.no{ width:6%; color:#6b746f; text-align:center; }
+    table.bahan td.tk{ width:20%; font-weight:700; white-space:nowrap; }
+    table.bahan td.ct{ width:28%; color:#6b746f; font-size:10.5px; }
+    table.bahan .kosong{ text-align:center; color:#9aa39e; padding:14px; }
+    .kond{ display:inline-block; font-size:9px; font-weight:700; color:#0F5132; background:#E1EFE6; border-radius:4px; padding:1px 5px; vertical-align:middle; }
+    .step{ display:flex; gap:10px; border:1px solid #e3e8e5; border-left-width:4px; border-radius:6px; padding:8px 10px; margin-bottom:7px; break-inside:avoid; }
+    .step .sno{ color:#fff; font-weight:700; width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:12px; flex:0 0 auto; }
+    .step .sbody{ flex:1; }
+    .step .steks{ white-space:pre-wrap; }
+    .step .slv{ display:inline-block; margin-top:3px; font-size:9.5px; font-weight:700; text-transform:uppercase; letter-spacing:.3px; }
+    .legend{ margin:8px 0 2px; font-size:10px; color:#555; }
+    .legend .lg{ display:inline-flex; align-items:center; gap:4px; margin-right:12px; }
+    .legend .lg i{ width:9px; height:9px; border-radius:2px; display:inline-block; }
+    .catatan{ border:1px dashed #b9c4be; border-radius:6px; padding:8px 10px; margin-top:10px; min-height:44px; }
+    .catatan .lbl{ font-size:10px; font-weight:700; color:#0A3D26; text-transform:uppercase; letter-spacing:.3px; }
+    .sign{ display:flex; gap:14px; margin-top:20px; break-inside:avoid; }
+    .sign .box{ flex:1; border:1px solid #cfd8d3; border-radius:6px; padding:8px 10px 30px; font-size:10.5px; }
+    .sign .box .role{ font-weight:700; color:#0A3D26; }
+    .sign .box .line{ margin-top:26px; border-top:1px solid #9aa39e; font-size:9.5px; color:#6b746f; padding-top:3px; }
+    .foot{ margin-top:14px; text-align:center; font-size:9.5px; color:#9aa39e; }
+  </style></head><body>
+    <div class="band">
+      <div>
+        <h1>WORK INSTRUCTION — DAPUR</h1>
+        <div class="sub">Standar resep &amp; cara pembuatan produk</div>
+      </div>
+      <div class="brand">ELIO<small>Kitchen SOP</small></div>
+    </div>
+    <table class="meta">
+      <tr><td class="k">Nama Produk</td><td><strong>${esc(nama)}</strong></td><td class="k">No. Dokumen</td><td>${esc(docNo)}</td></tr>
+      <tr><td class="k">Kategori</td><td>${esc(katNama)}</td><td class="k">Tanggal</td><td>${tglCetak}</td></tr>
+      <tr><td class="k">Outlet / Cabang</td><td>${esc(cabNama)}</td><td class="k">Revisi</td><td>00</td></tr>
+    </table>
+
+    <h2 class="sec">A. Bahan &amp; Takaran</h2>
+    <table class="bahan">
+      <thead><tr><th class="no">No</th><th>Bahan</th><th>Takaran</th><th>Catatan</th></tr></thead>
+      <tbody>${bahanRows}</tbody>
+    </table>
+
+    <h2 class="sec">B. Langkah Pembuatan</h2>
+    ${stepRows}
+    <div class="legend">${legend}</div>
+
+    <div class="catatan"><div class="lbl">Catatan mutu &amp; penyajian</div></div>
+
+    <div class="sign">
+      <div class="box"><div class="role">Disusun oleh</div><div class="line">Nama &amp; tanggal</div></div>
+      <div class="box"><div class="role">Diperiksa</div><div class="line">Nama &amp; tanggal</div></div>
+      <div class="box"><div class="role">Disetujui</div><div class="line">Nama &amp; tanggal</div></div>
+    </div>
+    <div class="foot">Dokumen internal dapur Elio · dicetak ${tglCetak} · ${esc(docNo)}</div>
+  </body></html>`;
+
+  const w = window.open("", "_blank");
+  if (!w){ toast("Izinkan pop-up untuk unduh PDF"); return; }
+  w.document.write(html);
+  w.document.close();
+  setTimeout(() => { w.focus(); w.print(); }, 400);
+}
+
 function pasangToolbar(){
   const inp = $("#cariProduk");
   if (inp){
@@ -1342,7 +1476,10 @@ function renderAddView(){
     </div>
 
     <div class="card form-head-card">
-      <button class="btn btn-sm" id="f-back">← Kembali</button>
+      <div class="form-head-top">
+        <button class="btn btn-sm" id="f-back">← Kembali</button>
+        <button class="btn btn-sm" id="f-wi" title="Unduh Work Instruction dapur (PDF) — resep &amp; langkah, tanpa harga"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h6M9 9h1"/></svg> Cetak Work Instruction (PDF)</button>
+      </div>
       <div class="form-head-grid">
         <div class="field">
           <label>Nama produk</label>
@@ -1436,6 +1573,7 @@ function renderAddView(){
   $("#f-add-proses").addEventListener("click", () => { formProses.push({ teks: "", level: "normal" }); renderProses(); autoDraft(); });
   $("#f-simpan").addEventListener("click", saveProduk);
   $("#f-back").addEventListener("click", () => switchTab("list"));
+  { const wiBtn = $("#f-wi"); if (wiBtn) wiBtn.addEventListener("click", cetakWorkInstruction); }
   const draftBtn = $("#f-draft");
   if (draftBtn) draftBtn.addEventListener("click", () => { simpanDraft(); toast("Draft disimpan"); });
   const namaInp = $("#f-nama");
