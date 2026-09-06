@@ -1186,9 +1186,13 @@ function cetakWorkInstruction(){
 
   const html = `<!DOCTYPE html><html lang="id"><head><meta charset="utf-8"><title>Work Instruction — ${esc(nama)}</title>
   <style>
-    @page{ size:A4; margin:13mm; }
+    @page{ size:A4 portrait; margin:13mm; }
     *{ box-sizing:border-box; }
     body{ font-family:Arial,Helvetica,sans-serif; color:#1a1a1a; margin:0; font-size:12px; line-height:1.45; }
+    /* Tampilan di layar dibuat menyerupai kertas A4 (area cetak 210-2x13=184mm).
+       TIDAK memengaruhi hasil cetak -- saat print, ukuran & margin ikut @page. */
+    @media screen{ body{ width:184mm; margin:16px auto; padding:14mm; background:#fff; box-shadow:0 4px 20px rgba(0,0,0,.15); } }
+    @media screen{ html{ background:#e9edea; } }
     .band{ background:#0F5132; color:#fff; padding:14px 18px; border-radius:8px; display:flex; justify-content:space-between; align-items:center; }
     .band h1{ font-size:19px; margin:0; letter-spacing:.5px; }
     .band .sub{ font-size:11px; opacity:.85; margin-top:2px; }
