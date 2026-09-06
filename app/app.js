@@ -1146,7 +1146,7 @@ function cetakWorkInstruction(){
     const isKond = b.sumber === "kondimen" || (b.nama_normal || "").startsWith("kondimen:");
     const namaBersih = esc((b.nama || "").replace(/^★\s*/, ""));
     const unit = b.hilang ? "" : effUnit(b);
-    const takaran = `${b.qty || 0}${unit ? " " + esc(unit) : ""}`;
+    const qtyStr = String(b.qty || 0);
     let cat = "";
     if (b.hilang) cat = "Bahan tak terdaftar — cek gudang";
     else if (!b.konv) cat = "Satuan belum lengkap";
@@ -1154,7 +1154,7 @@ function cetakWorkInstruction(){
     return `<tr>
       <td class="no">${idx + 1}</td>
       <td>${namaBersih}${isKond ? ' <span class="kond">kondimen</span>' : ""}</td>
-      <td class="tk">${takaran}</td>
+      <td class="tk"><span class="q">${qtyStr}</span>${unit ? ` <span class="u">${esc(unit)}</span>` : ""}</td>
       <td class="ct">${cat}</td>
     </tr>`;
   }).join("") : `<tr><td colspan="4" class="kosong">Belum ada bahan.</td></tr>`;
@@ -1210,6 +1210,8 @@ function cetakWorkInstruction(){
     table.bahan tr:nth-child(even) td{ background:#f6f9f7; }
     table.bahan td.no{ width:6%; color:#6b746f; text-align:center; }
     table.bahan td.tk{ width:20%; font-weight:700; white-space:nowrap; }
+    table.bahan td.tk .q{ display:inline-block; min-width:46px; text-align:right; font-variant-numeric:tabular-nums; }
+    table.bahan td.tk .u{ font-weight:600; color:#4a544f; }
     table.bahan td.ct{ width:28%; color:#6b746f; font-size:10.5px; }
     table.bahan .kosong{ text-align:center; color:#9aa39e; padding:14px; }
     .kond{ display:inline-block; font-size:9px; font-weight:700; color:#0F5132; background:#E1EFE6; border-radius:4px; padding:1px 5px; vertical-align:middle; }
