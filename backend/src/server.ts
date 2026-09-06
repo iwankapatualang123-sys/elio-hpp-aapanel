@@ -6,6 +6,7 @@ import { env } from './config/env';
 import { refreshSemuaHarga } from './jobs/refreshHarga';
 import authRoutes from './routes/auth';
 import produkRoutes from './routes/produk';
+import produkFotoRoutes from './routes/produkFoto';
 import resepBahanRoutes from './routes/resepBahan';
 import biayaOperasionalProdukRoutes from './routes/biayaOperasionalProduk';
 import produkHppHistoryRoutes from './routes/produkHppHistory';
@@ -27,6 +28,7 @@ app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
 app.use('/api/auth', authRoutes);
 app.use('/api/produk', produkRoutes);
+app.use('/api/produk-foto', produkFotoRoutes);
 app.use('/api/resep-bahan', resepBahanRoutes);
 app.use('/api/biaya-operasional-produk', biayaOperasionalProdukRoutes);
 app.use('/api/produk-hpp-history', produkHppHistoryRoutes);

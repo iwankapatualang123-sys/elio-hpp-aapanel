@@ -232,6 +232,25 @@
     throw new Error(`kondimen_bahan: operasi ${state.method} tidak didukung`);
   }
 
+  // produk_foto: 1 baris/produk (base64 di tabel terpisah). GET per-produk,
+  // upsert (PUT), delete. Sengaja BUKAN bagian select("*") produk supaya daftar
+  // produk tidak menyeret base64 semua foto.
+  async function handleProdukFoto(state) {
+    const produkId = eqVal(state, "produk_id");
+    if (state.method === "select") {
+      return apiFetch(`/api/produk-foto/${encodeURIComponent(produkId)}`);
+    }
+    if (state.method === "upsert") {
+      const body = state.body || {};
+      const id = body.produk_id || produkId;
+      return apiFetch(`/api/produk-foto/${encodeURIComponent(id)}`, { method: "PUT", body: toBackendBody({ data: body.data }) });
+    }
+    if (state.method === "delete") {
+      return apiFetch(`/api/produk-foto/${encodeURIComponent(produkId)}`, { method: "DELETE" });
+    }
+    throw new Error(`produk_foto: operasi ${state.method} tidak didukung`);
+  }
+
   const TABLES = {
     kondimen: crudTable("/api/kondimen", (body) => body && body.is_deleted === true),
     kategori_produk: crudTable("/api/kategori-produk", (body) => body && body.is_deleted === true),
@@ -244,7 +263,8 @@
     material_konversi: { execute: handleMaterialKonversi },
     harga_acuan_material: { execute: handleHargaAcuan },
     produk_log: { execute: handleProdukLog },
-    kondimen_bahan: { execute: handleKondimenBahan }
+    kondimen_bahan: { execute: handleKondimenBahan },
+    produk_foto: { execute: handleProdukFoto }
   };
 
   async function execute(state) {

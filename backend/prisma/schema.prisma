@@ -55,6 +55,20 @@ model Produk {
   @@map("produk")
 }
 
+// Foto plating produk — 1 baris per produk, base64 (data URL JPEG hasil resize
+// di klien). Tabel TERPISAH dari produk supaya select("*") daftar produk tidak
+// ikut menyeret base64 semua foto (bisa puluhan MB utk ratusan produk). Diambil
+// hanya saat buka form edit / cetak Work Instruction. Tanpa FK: produk dihapus
+// pakai soft-delete (is_deleted), jadi cascade tak relevan; baris yatim (kalau
+// ada) tak berbahaya.
+model ProdukFoto {
+  produkId  String   @id @map("produk_id")
+  data      String   @db.LongText // data URL, mis. "data:image/jpeg;base64,...."
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@map("produk_foto")
+}
+
 model ResepBahan {
   id               String   @id
   produkId         String   @map("produk_id")

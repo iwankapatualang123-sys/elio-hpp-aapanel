@@ -1175,6 +1175,10 @@ function cetakWorkInstruction(){
     return `<span class="lg"><i style="background:${lv.warna};"></i>${lv.label}</span>`;
   }).join("");
 
+  const fotoBlock = formFotoPlating
+    ? `<h2 class="sec">Foto Plating — acuan penyajian</h2><div class="foto-wrap"><img src="${formFotoPlating}" alt="Foto plating ${esc(nama)}"></div>`
+    : "";
+
   const tgl = new Date();
   const tglCetak = tgl.toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
   const slug = (nama.toUpperCase().replace(/[^A-Z0-9]+/g, "-").replace(/^-|-$/g, "") || "PRODUK").slice(0, 22);
@@ -1194,6 +1198,8 @@ function cetakWorkInstruction(){
     .meta td{ border:1px solid #cfd8d3; padding:6px 9px; }
     .meta .k{ background:#EAF1EC; font-weight:700; color:#0A3D26; width:15%; white-space:nowrap; }
     h2.sec{ font-size:13px; color:#0F5132; margin:18px 0 8px; padding-bottom:4px; border-bottom:2px solid #0F5132; text-transform:uppercase; letter-spacing:.4px; }
+    .foto-wrap{ text-align:center; margin:6px 0 4px; break-inside:avoid; }
+    .foto-wrap img{ max-width:100%; max-height:300px; border:1px solid #cfd8d3; border-radius:8px; }
     table.bahan{ width:100%; border-collapse:collapse; font-size:12px; }
     table.bahan th{ background:#0F5132; color:#fff; text-align:left; padding:7px 9px; font-size:11px; }
     table.bahan td{ padding:7px 9px; border-bottom:1px solid #e3e8e5; vertical-align:top; }
@@ -1231,6 +1237,8 @@ function cetakWorkInstruction(){
       <tr><td class="k">Kategori</td><td>${esc(katNama)}</td><td class="k">Tanggal</td><td>${tglCetak}</td></tr>
       <tr><td class="k">Outlet / Cabang</td><td>${esc(cabNama)}</td><td class="k">Revisi</td><td>00</td></tr>
     </table>
+
+    ${fotoBlock}
 
     <h2 class="sec">A. Bahan &amp; Takaran</h2>
     <table class="bahan">
@@ -1433,6 +1441,7 @@ let formOverheadPersen = 15;
 let formMargin = 60;
 let formHargaAktual = null; // harga jual sungguhan di outlet (opsional) — null = belum diisi, ikut harga disarankan
 let formProses = [];  // {teks, level}  level: penting|hati|normal|info
+let formFotoPlating = null; // dataURL foto plating produk yg sedang dibuka (null = tidak ada)
 let kondimenList = []; // {id, nama, satuan_hasil, hpp_per_satuan, ...}
 
 const PROSES_LEVEL = {
@@ -1443,7 +1452,7 @@ const PROSES_LEVEL = {
 };
 
 function newForm(){
-  formBahan = []; formOpex = []; formOverheadPersen = 15; formMargin = 60; formHargaAktual = null; editingProdukId = null; formKategoriId = ""; formProses = [];
+  formBahan = []; formOpex = []; formOverheadPersen = 15; formMargin = 60; formHargaAktual = null; editingProdukId = null; formKategoriId = ""; formProses = []; formFotoPlating = null;
   const d = bacaDraft();
   if (d && !editingProdukId){
     // ada draft tersimpan — tawarkan pulihkan
@@ -1494,6 +1503,12 @@ function renderAddView(){
           <select id="f-cabang">${cabangList.filter(c => c.aktif).map(c => `<option value="${c.id}">${esc(c.nama)}</option>`).join("")}</select>
         </div>
       </div>
+    </div>
+
+    <div class="card">
+      <h2><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>Foto Plating</h2>
+      <div class="foto-hint">Foto acuan penyajian — akan tampil di PDF Work Instruction supaya karyawan tahu plating yang sesuai.</div>
+      <div id="f-foto-wrap"></div>
     </div>
 
     <div class="card">
@@ -1581,8 +1596,85 @@ function renderAddView(){
   const hapusBtn = $("#f-hapus");
   if (hapusBtn) hapusBtn.addEventListener("click", deleteProduk);
 
-  renderFormBahan(); renderOpex(); renderProses(); recalc();
+  renderFormBahan(); renderOpex(); renderProses(); renderFotoPlating(); recalc();
   renderKatTingkat();
+}
+
+// ---- Foto plating ---------------------------------------------------------
+function renderFotoPlating(){
+  const el = $("#f-foto-wrap");
+  if (!el) return;
+  if (formFotoPlating){
+    el.innerHTML = `
+      <div class="foto-view">
+        <img src="${formFotoPlating}" alt="Foto plating">
+        <div class="foto-act">
+          <button class="btn btn-sm" id="f-foto-ganti">Ganti foto</button>
+          <button class="btn btn-sm btn-danger" id="f-foto-hapus">Hapus</button>
+        </div>
+      </div>`;
+  } else {
+    el.innerHTML = `
+      <button type="button" class="foto-drop" id="f-foto-drop">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 16V4M8 8l4-4 4 4"/><path d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2"/></svg>
+        <div class="fd-title">Klik untuk unggah foto plating</div>
+        <div class="fd-sub">JPG / PNG · otomatis dikecilkan · muncul di PDF Work Instruction</div>
+      </button>`;
+  }
+  const pilih = () => {
+    const inp = document.createElement("input");
+    inp.type = "file"; inp.accept = "image/*";
+    inp.onchange = () => { const f = inp.files && inp.files[0]; if (f) prosesFotoPlating(f); };
+    inp.click();
+  };
+  const drop = $("#f-foto-drop"); if (drop) drop.addEventListener("click", pilih);
+  const g = $("#f-foto-ganti"); if (g) g.addEventListener("click", pilih);
+  const h = $("#f-foto-hapus"); if (h) h.addEventListener("click", () => { formFotoPlating = null; renderFotoPlating(); });
+}
+// Kecilkan + kompres foto di sisi klien SEBELUM disimpan (base64 di DB) supaya
+// payload & baris DB tetap kecil. Maks sisi 1000px, mundur kualitas kalau perlu.
+function prosesFotoPlating(file){
+  if (!/^image\//.test(file.type)){ toast("File harus berupa gambar"); return; }
+  const reader = new FileReader();
+  reader.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      const maks = 1000;
+      const ratio = Math.min(1, maks / img.width, maks / img.height);
+      const w = Math.max(1, Math.round(img.width * ratio));
+      const h = Math.max(1, Math.round(img.height * ratio));
+      const canvas = document.createElement("canvas");
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, w, h); // dasar putih utk PNG transparan
+      ctx.drawImage(img, 0, 0, w, h);
+      let q = 0.72;
+      let dataURL = canvas.toDataURL("image/jpeg", q);
+      while (dataURL.length > 900000 && q > 0.4){ q -= 0.1; dataURL = canvas.toDataURL("image/jpeg", q); }
+      if (dataURL.length > 1600000){ toast("Foto terlalu besar — coba foto lain / lebih kecil"); return; }
+      formFotoPlating = dataURL;
+      renderFotoPlating();
+    };
+    img.onerror = () => toast("Gagal memuat gambar");
+    img.src = reader.result;
+  };
+  reader.onerror = () => toast("Gagal membaca file");
+  reader.readAsDataURL(file);
+}
+async function loadFotoPlating(produkId){
+  try{
+    const { data } = await sb.from("produk_foto").select("*").eq("produk_id", produkId).maybeSingle();
+    return (data && data.data) ? data.data : null;
+  }catch(e){ return null; }
+}
+async function simpanFotoPlating(produkId){
+  // Dipanggil setelah produk tersimpan (produkId sudah pasti). Upsert kalau ada
+  // foto, hapus barisnya kalau foto dikosongkan.
+  if (formFotoPlating){
+    await sb.from("produk_foto").upsert({ produk_id: produkId, data: formFotoPlating });
+  } else {
+    await sb.from("produk_foto").delete().eq("produk_id", produkId);
+  }
 }
 
 function renderProses(){
@@ -2167,6 +2259,11 @@ async function saveProduk(){
   }));
   if (opexRows.length) await sb.from("biaya_operasional_produk").insert(opexRows);
 
+  // Foto plating (tabel terpisah supaya daftar produk tidak berat) — upsert
+  // kalau ada, hapus kalau dikosongkan. Kegagalan foto tidak membatalkan simpan
+  // produk yang sudah berhasil di atas.
+  try{ await simpanFotoPlating(produkId); }catch(e){ console.error("simpan foto gagal:", e); }
+
   await catatLog(produkId, nama, isEdit ? "edit" : "buat",
     `HPP ${rp(calc.final)}, harga jual ${rp(calc.harga)}, margin ${formMargin}%`);
 
@@ -2221,6 +2318,7 @@ async function openEdit(id){
   formKategoriId = p.kategori_id || "";
   try{ formProses = p.cara_proses ? JSON.parse(p.cara_proses) : []; }catch(e){ formProses = []; }
   if (!Array.isArray(formProses)) formProses = [];
+  formFotoPlating = await loadFotoPlating(id);
 
   switchTab("add");
   renderAddView();
