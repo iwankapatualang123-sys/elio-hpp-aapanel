@@ -13,7 +13,8 @@
     "migrate:from-supabase": "tsx scripts/migrateFromSupabase.ts",
     "set-pin": "tsx scripts/setPin.ts",
     "refresh-harga-sekarang": "tsx scripts/refreshHargaSekarang.ts",
-    "cek-bahan": "tsx scripts/cekBahanBermasalah.ts"
+    "cek-bahan": "tsx scripts/cekBahanBermasalah.ts",
+    "cek-data": "tsx scripts/cekData.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.20.0",
