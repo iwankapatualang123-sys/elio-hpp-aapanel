@@ -105,12 +105,23 @@ export async function buatCadangan(sumber: 'jadwal' | 'manual' | 'awal' | 'sebel
   const status = await cekMundur();
   const data: Record<string, unknown[]> = {};
   const jumlah: Record<string, number> = {};
+  const gagal: Record<string, string> = {};
   for (const t of TABEL) {
-    const rows: unknown[] = await (prisma as any)[t].findMany();
-    data[t] = rows;
-    jumlah[t] = rows.length;
+    try {
+      const rows: unknown[] = await (prisma as any)[t].findMany();
+      data[t] = rows;
+      jumlah[t] = rows.length;
+    } catch (err) {
+      // Satu tabel rusak TIDAK boleh menggagalkan seluruh cadangan -- justru saat
+      // server bermasalah cadangan paling dibutuhkan. Ditemukan nyata: sesudah
+      // crash 15 Sep, produk_foto jadi "doesn't exist in engine" (MySQL 1932)
+      // dan membuat cadangan pertama gagal total. Tabel yang gagal dicatat di
+      // `gagal` dan TIDAK ada di `data`, supaya skrip pemulihan tahu untuk
+      // tidak menyentuhnya (bukan mengosongkannya).
+      gagal[t] = pesanSingkat(err);
+    }
   }
-  const isi = JSON.stringify({ versi: 1, aplikasi: 'elio-hpp', dibuat: new Date().toISOString(), sumber, mundur: status.mundur, jumlah, data });
+  const isi = JSON.stringify({ versi: 1, aplikasi: 'elio-hpp', dibuat: new Date().toISOString(), sumber, mundur: status.mundur, jumlah, gagal, data });
   const nama = `hpp-${cap(new Date())}${status.mundur ? '-MUNDUR' : ''}.json.gz`;
   const buf = zlib.gzipSync(isi);
   fs.writeFileSync(path.join(FOLDER, nama), buf);
@@ -122,7 +133,26 @@ export async function buatCadangan(sumber: 'jadwal' | 'manual' | 'awal' | 'sebel
     tulisPenanda(status.sekarang);
     bersihkanLama();
   }
-  return { nama, ukuran: buf.length, jumlah, mundur: status.mundur, alasan: status.alasan };
+  return { nama, ukuran: buf.length, jumlah, gagal, mundur: status.mundur, alasan: status.alasan };
+}
+
+function pesanSingkat(err: unknown): string {
+  const teks = String((err as any)?.message || err);
+  const m = teks.match(/message: "([^"]+)"/);
+  return (m ? m[1] : teks.trim().split('\n').pop() || teks).slice(0, 200);
+}
+
+// Nama tabel di database untuk ditampilkan ke user (produkFoto -> produk_foto).
+const namaTabel = (model: string) => model.replace(/[A-Z]/g, (c) => '_' + c.toLowerCase());
+
+// Tabel yang tidak bisa dibaca sama sekali -- tidak ikut tercadang dan fiturnya
+// di aplikasi ikut rusak. Cek murah (COUNT), dipanggil tiap aplikasi dimuat.
+export async function cekTabelRusak() {
+  const hasil = await Promise.all(TABEL.map(async (t) => {
+    try { await (prisma as any)[t].count(); return null; }
+    catch (err) { return { tabel: namaTabel(t), pesan: pesanSingkat(err) }; }
+  }));
+  return hasil.filter((x): x is { tabel: string; pesan: string } => x !== null);
 }
 
 function bersihkanLama() {
@@ -144,7 +174,7 @@ export async function terimaKeadaanSekarang() {
 }
 
 export async function statusCadangan() {
-  const s = await cekMundur();
+  const [s, tabelRusak] = await Promise.all([cekMundur(), cekTabelRusak()]);
   const daftar = daftarCadangan();
   const terakhir = daftar[0] || null;
   const umurJam = terakhir ? (Date.now() - new Date(terakhir.waktu).getTime()) / 3600000 : null;
@@ -156,6 +186,7 @@ export async function statusCadangan() {
     cadanganTerakhir: terakhir,
     // lebih dari 36 jam tanpa cadangan = jadwal hariannya tidak jalan
     basi: umurJam === null || umurJam > 36,
+    tabelRusak,
     jumlahCadangan: daftar.length
   };
 }

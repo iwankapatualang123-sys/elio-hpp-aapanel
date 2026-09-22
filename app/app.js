@@ -2912,7 +2912,8 @@ async function cekStatusCadangan(){
     s = await r.json();
   } catch (e) { return; }
   let el = $("#bannerCadangan");
-  if (!s.mundur && !s.basi){ if (el) el.remove(); return; }
+  const rusak = s.tabelRusak || [];
+  if (!s.mundur && !s.basi && !rusak.length){ if (el) el.remove(); return; }
   if (!el){
     el = document.createElement("div");
     el.id = "bannerCadangan";
@@ -2924,6 +2925,8 @@ async function cekStatusCadangan(){
   el.className = "banner-cadangan " + (s.mundur ? "bahaya" : "waspada");
   el.innerHTML = s.mundur
     ? `<b>Data HPP terdeteksi mundur ke salinan lama.</b> ${esc(s.alasan[0] || "")} Jangan input data dulu — klik di sini untuk detailnya.`
+    : rusak.length
+    ? `<b>Ada tabel database yang rusak:</b> ${esc(rusak.map(r => r.tabel).join(", "))}. Fitur yang memakainya tidak berfungsi dan tabelnya tidak ikut dicadangkan — klik di sini untuk detailnya.`
     : `<b>Cadangan otomatis tidak berjalan.</b> ${s.cadanganTerakhir ? "Cadangan terakhir " + esc(waktuCadangan(s.cadanganTerakhir.waktu)) + "." : "Belum ada cadangan sama sekali."} Klik di sini untuk membuat cadangan.`;
 }
 
@@ -2966,11 +2969,19 @@ async function renderKelolaCadangan(){
     : s.basi
       ? `<div class="cad-status waspada"><b>Cadangan otomatis tidak berjalan.</b> ${s.cadanganTerakhir ? "Terakhir " + esc(waktuCadangan(s.cadanganTerakhir.waktu)) + "." : "Belum pernah ada cadangan."} Buat satu sekarang, lalu minta admin memeriksa server.</div>`
       : `<div class="cad-status aman"><b>Aman.</b> Cadangan terakhir ${esc(waktuCadangan(s.cadanganTerakhir.waktu))} · ${s.sekarang.produk} produk dan ${s.sekarang.kondimen} kondimen tercatat (termasuk yang dihapus).</div>`;
+  const rusak = (s.tabelRusak || []).length
+    ? `<div class="cad-status waspada">
+        <b>Ada tabel yang rusak dan tidak ikut dicadangkan:</b>
+        <ul>${s.tabelRusak.map(r => `<li><b>${esc(r.tabel)}</b>${r.tabel === "produk_foto" ? " — foto plating produk" : ""}<br><span style="opacity:.8">${esc(r.pesan)}</span></li>`).join("")}</ul>
+        <p>Fitur yang memakai tabel ini tidak bisa dipakai sampai diperbaiki admin. Tabel lain tetap dicadangkan seperti biasa.</p>
+      </div>`
+    : "";
   body.innerHTML = `
     <div class="card">
       <h2>Cadangan data</h2>
       <p class="cad-intro">Server membuat cadangan otomatis setiap hari pukul 02:30 dan menyimpannya 30 hari. Tapi cadangan di server ikut hilang kalau servernya bermasalah — <b>unduh cadangan terbaru ke komputermu</b> seminggu sekali, dan setiap selesai mengisi banyak data.</p>
       ${status}
+      ${rusak}
       <div class="cad-aksi">
         <button class="btn btn-primary" id="cadUnduhTerbaru" ${daftar.length ? "" : "disabled"}>Unduh cadangan terbaru</button>
         <button class="btn" id="cadBuat">Buat cadangan sekarang</button>

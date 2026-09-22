@@ -36,12 +36,22 @@ async function main() {
 
   console.log(`Berkas  : ${file}`);
   console.log(`Dibuat  : ${isi.dibuat}${isi.mundur ? '   (!) dibuat saat database terdeteksi MUNDUR' : ''}\n`);
+  // Tabel yang TIDAK ikut tercadang (gagal dibaca saat cadangan dibuat, atau
+  // berkas versi lama yang belum punya tabelnya) dilewati sepenuhnya: tidak
+  // dikosongkan, tidak diisi. Mengosongkannya berarti menghapus data yang
+  // sebenarnya tidak ada gantinya di berkas.
+  const ikut = (t: string) => Array.isArray(isi.data[t]) && !(isi.gagal && isi.gagal[t]);
   console.log('tabel'.padEnd(26) + 'sekarang'.padStart(10) + 'di berkas'.padStart(11));
   for (const t of TABEL) {
-    const kini = await (prisma as any)[t].count();
-    const berkas = (isi.data[t] || []).length;
-    const tanda = berkas < kini ? '   <- berkas lebih sedikit' : '';
-    console.log(t.padEnd(26) + String(kini).padStart(10) + String(berkas).padStart(11) + tanda);
+    let kini = '?';
+    try { kini = String(await (prisma as any)[t].count()); } catch { kini = 'rusak'; }
+    if (!ikut(t)) {
+      console.log(t.padEnd(26) + kini.padStart(10) + '—'.padStart(11) + '   dilewati (tidak ikut tercadang, tidak disentuh)');
+      continue;
+    }
+    const berkas = isi.data[t].length;
+    const tanda = kini !== 'rusak' && berkas < Number(kini) ? '   <- berkas lebih sedikit' : '';
+    console.log(t.padEnd(26) + kini.padStart(10) + String(berkas).padStart(11) + tanda);
   }
 
   if (!jalankan) {
@@ -56,9 +66,10 @@ async function main() {
   console.log('Menimpa database...');
   await prisma.$transaction(async (tx) => {
     await tx.$executeRawUnsafe('SET FOREIGN_KEY_CHECKS=0');
-    for (const t of [...TABEL].reverse()) await (tx as any)[t].deleteMany({});
+    for (const t of [...TABEL].reverse()) if (ikut(t)) await (tx as any)[t].deleteMany({});
     for (const t of TABEL) {
-      const rows = isi.data[t] || [];
+      if (!ikut(t)) continue;
+      const rows = isi.data[t];
       if (rows.length) await (tx as any)[t].createMany({ data: rows });
     }
     await tx.$executeRawUnsafe('SET FOREIGN_KEY_CHECKS=1');
