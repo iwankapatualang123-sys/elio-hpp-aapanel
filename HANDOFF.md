@@ -50,6 +50,35 @@ Kalau schema Prisma berubah: `npx prisma generate && npx prisma db push` sebelum
 diubah `npm install` di server, jalankan dulu:
 `git checkout -- backend/package-lock.json`
 
+## ⚠️ INSIDEN 15 SEP 2026 — data HPP hilang + pengaman yang dipasang
+**Apa yang terjadi:** server crash (dipicu aplikasi warehouse). Saat pemulihan,
+MariaDB dikembalikan ke salinan ~18 Agustus. Absensi selamat karena punya backup
+sendiri (`/www/backup/SELAMATKAN/`); HPP tidak punya, dan backup aaPanel-nya cuma
+menyimpan 3 hari di server yang sama. Semua data HPP 19 Agu – 14 Sep hilang
+(±36 produk, 18 kondimen, banyak resep) dan **tidak ada yang sadar selama seminggu**.
+Ditelusuri 21 Sep: log biner MariaDB dimulai ulang 16 Sep, tidak ada dump SQL di
+rentang itu, tidak ada salinan berkas tabel lain. User memilih MENGISI ULANG manual
+(daftar isi ulang dari data 26 Agu: https://claude.ai/artifact/P6hTDQRPoAx5CCWYPAKujp).
+
+**Pengaman yang dipasang** (`backend/src/lib/cadangan.ts`):
+- Cadangan JSON harian 02:30 di `backend/cadangan/` (di luar folder data MariaDB,
+  gitignored), disimpan 30 hari, minimal 7 terbaru selalu ada. Dibuat juga saat
+  server menyala kalau yang terakhir >20 jam.
+- **Alarm "data mundur"**: aplikasi tidak pernah menghapus baris produk/kondimen/log
+  (hapus = `is_deleted`), jadi jumlahnya & waktu log terakhir tidak mungkin turun
+  secara wajar. Pembandingnya di `backend/cadangan/penanda.json` (di luar DB).
+  Kalau turun → banner merah di aplikasi, cadangan diberi nama `-MUNDUR`, penanda
+  TIDAK digeser, dan cadangan lama TIDAK dibersihkan. Banner kuning kalau cadangan
+  >36 jam (jadwal mati).
+- UI: **Pengaturan › Cadangan data** — status, buat sekarang, unduh (supaya ada
+  salinan di luar server). Tombol "terima data sekarang" mematikan alarm.
+- Pulihkan: `npm run pulihkan -- cadangan/<berkas>` = CUMA membandingkan.
+  Tambah `--jalankan` untuk menimpa; skrip membuat cadangan `sebelum-pulih` dulu.
+  Menimpa SELURUH DB HPP — tanyakan user dulu, jangan pernah otomatis.
+- **Tidak menutup**: pemulihan seluruh disk/VPS (penanda & cadangan ikut mundur).
+  Itulah gunanya tombol unduh — ingatkan user menyimpan salinan di komputernya.
+- Saran untuk user (belum dikerjakan): perpanjang retensi backup aaPanel dari 3 hari.
+
 ## Fitur yang sudah ada (per Agu 2026)
 - Produk: tabel per kategori (1 kartu/kategori), kolom HPP / harga rekomendasi /
   harga jual aktual / selisih / margin rekom / margin aktual / markup / update.

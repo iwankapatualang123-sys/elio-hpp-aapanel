@@ -14,7 +14,9 @@
     "set-pin": "tsx scripts/setPin.ts",
     "refresh-harga-sekarang": "tsx scripts/refreshHargaSekarang.ts",
     "cek-bahan": "tsx scripts/cekBahanBermasalah.ts",
-    "cek-data": "tsx scripts/cekData.ts"
+    "cek-data": "tsx scripts/cekData.ts",
+    "cadangan": "tsx -e \"require('./src/lib/cadangan').buatCadangan('manual').then(h=>{console.log(h);process.exit(0)})\"",
+    "pulihkan": "tsx scripts/pulihkanCadangan.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.20.0",

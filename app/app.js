@@ -142,6 +142,7 @@ async function bootData(){
   tampilkanSkeleton();
   await Promise.all([loadHargaAcuan(), loadKonversi(), loadManual(), loadKategori(), loadCabang(), loadKondimen()]);
   await loadProduk();
+  cekStatusCadangan(); // sengaja tanpa await -- banner boleh muncul belakangan, jangan tahan layar
 }
 function tampilkanSkeleton(){
   const el = $("#prodList");
@@ -627,6 +628,7 @@ function renderSidebar(){
       { k:"kategori", t:"Kategori", ic:'<path d="M3 7h18M3 12h18M3 17h18"/>' },
       { k:"cabang", t:"Cabang", ic:'<path d="M3 21h18M5 21V7l7-4 7 4v14M9 9h1m4 0h1m-6 4h1m4 0h1m-6 4h1m4 0h1"/>' },
       { k:"log", t:"Log perubahan", ic:'<path d="M12 8v4l3 3M3 12a9 9 0 1018 0 9 9 0 00-18 0z"/>' },
+      { k:"cadangan", t:"Cadangan data", ic:'<path d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2"/>' },
     ];
     el.innerHTML = nav + `<div class="side-sep"></div><div class="side-title">Pengaturan</div><div class="side-menu">` +
       menu.map(m => `<div class="side-menu-item ${kelolaSub===m.k?"active":""}" data-sub="${m.k}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${m.ic}</svg>${m.t}</div>`).join("") + `</div>`;
@@ -2878,6 +2880,138 @@ async function hapusMaterial(b){
 // ---------------------------------------------------------------------
 //  KELOLA: kategori, cabang, log
 // ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+//  CADANGAN DATA -- lihat backend/src/lib/cadangan.ts
+// ---------------------------------------------------------------------
+// Latar: 15 Sep 2026 server crash dan database HPP dikembalikan ke salinan
+// ~18 Agustus. HPP tidak punya cadangan sendiri, dan tidak ada yang sadar
+// selama seminggu. Bagian ini (1) menampilkan banner kalau server mendeteksi
+// data mundur atau cadangan harian berhenti, dan (2) memberi cara MENGUNDUH
+// cadangan ke komputer user -- satu-satunya salinan yang selamat kalau
+// servernya sendiri bermasalah.
+// Tidak lewat shim supabase (apiClient.js) karena ini bukan tabel.
+async function apiCadangan(p, opts){
+  let token = "";
+  try { token = localStorage.getItem("hpp_token") || ""; } catch (e) {}
+  const base = (typeof API_BASE_URL !== "undefined" && API_BASE_URL) || "";
+  const o = Object.assign({ cache: "no-store" }, opts || {});
+  o.headers = Object.assign({ Authorization: "Bearer " + token }, (opts && opts.headers) || {});
+  return fetch(base + "/api/cadangan" + p, o);
+}
+
+function waktuCadangan(iso){
+  const d = new Date(iso);
+  return infoTanggal(iso).teks + " " + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+}
+
+async function cekStatusCadangan(){
+  let s;
+  try {
+    const r = await apiCadangan("/status");
+    if (!r.ok) return; // server lama (belum punya fitur ini) -> diam saja
+    s = await r.json();
+  } catch (e) { return; }
+  let el = $("#bannerCadangan");
+  if (!s.mundur && !s.basi){ if (el) el.remove(); return; }
+  if (!el){
+    el = document.createElement("div");
+    el.id = "bannerCadangan";
+    el.setAttribute("role", "alert");
+    const host = $("#fnbSection");
+    if (host) host.prepend(el); else document.body.prepend(el);
+    el.addEventListener("click", () => { kelolaSub = "cadangan"; switchTab("kelola"); });
+  }
+  el.className = "banner-cadangan " + (s.mundur ? "bahaya" : "waspada");
+  el.innerHTML = s.mundur
+    ? `<b>Data HPP terdeteksi mundur ke salinan lama.</b> ${esc(s.alasan[0] || "")} Jangan input data dulu — klik di sini untuk detailnya.`
+    : `<b>Cadangan otomatis tidak berjalan.</b> ${s.cadanganTerakhir ? "Cadangan terakhir " + esc(waktuCadangan(s.cadanganTerakhir.waktu)) + "." : "Belum ada cadangan sama sekali."} Klik di sini untuk membuat cadangan.`;
+}
+
+async function unduhCadangan(nama){
+  try {
+    const r = await apiCadangan("/unduh/" + encodeURIComponent(nama));
+    if (!r.ok) throw new Error("status " + r.status);
+    const url = URL.createObjectURL(await r.blob());
+    const a = document.createElement("a");
+    a.href = url; a.download = nama;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    toast("Cadangan diunduh — simpan di tempat yang aman");
+  } catch (e) {
+    console.error(e);
+    toast("Gagal mengunduh cadangan");
+  }
+}
+
+async function renderKelolaCadangan(){
+  const body = $("#kelola-body");
+  body.innerHTML = '<div class="card"><h2>Cadangan data</h2><div class="empty" style="padding:16px;">Memuat…</div></div>';
+  let s, daftar;
+  try {
+    const [r1, r2] = await Promise.all([apiCadangan("/status"), apiCadangan("")]);
+    if (!r1.ok || !r2.ok) throw new Error();
+    s = await r1.json(); daftar = await r2.json();
+  } catch (e) {
+    body.innerHTML = '<div class="card"><h2>Cadangan data</h2><div class="empty" style="padding:16px;">Gagal memuat. Server mungkin belum diperbarui, atau koneksi terputus.</div></div>';
+    return;
+  }
+  const kb = n => n < 1024 ? n + " B" : (n / 1024).toFixed(1).replace(".", ",") + " KB";
+  const status = s.mundur
+    ? `<div class="cad-status bahaya">
+        <b>Data terdeteksi mundur ke salinan lama.</b>
+        <ul>${s.alasan.map(a => `<li>${esc(a)}</li>`).join("")}</ul>
+        <p>Jangan input data dulu. Cadangan di bawah yang dibuat <b>sebelum</b> peringatan ini muncul berisi data yang lebih lengkap — minta admin memulihkannya.</p>
+        <button class="btn btn-sm btn-danger" id="cadTerima">Saya sudah tahu — terima data sekarang</button>
+      </div>`
+    : s.basi
+      ? `<div class="cad-status waspada"><b>Cadangan otomatis tidak berjalan.</b> ${s.cadanganTerakhir ? "Terakhir " + esc(waktuCadangan(s.cadanganTerakhir.waktu)) + "." : "Belum pernah ada cadangan."} Buat satu sekarang, lalu minta admin memeriksa server.</div>`
+      : `<div class="cad-status aman"><b>Aman.</b> Cadangan terakhir ${esc(waktuCadangan(s.cadanganTerakhir.waktu))} · ${s.sekarang.produk} produk dan ${s.sekarang.kondimen} kondimen tercatat (termasuk yang dihapus).</div>`;
+  body.innerHTML = `
+    <div class="card">
+      <h2>Cadangan data</h2>
+      <p class="cad-intro">Server membuat cadangan otomatis setiap hari pukul 02:30 dan menyimpannya 30 hari. Tapi cadangan di server ikut hilang kalau servernya bermasalah — <b>unduh cadangan terbaru ke komputermu</b> seminggu sekali, dan setiap selesai mengisi banyak data.</p>
+      ${status}
+      <div class="cad-aksi">
+        <button class="btn btn-primary" id="cadUnduhTerbaru" ${daftar.length ? "" : "disabled"}>Unduh cadangan terbaru</button>
+        <button class="btn" id="cadBuat">Buat cadangan sekarang</button>
+      </div>
+      <div class="cad-list">
+        ${daftar.length ? daftar.map(c => `
+          <div class="cad-row">
+            <div class="cad-info">
+              <div class="cad-nama">${esc(waktuCadangan(c.waktu))}${c.mundur ? ' <span class="cad-tag">saat data mundur</span>' : ""}</div>
+              <div class="cad-meta">${esc(c.nama)} · ${kb(c.ukuran)}</div>
+            </div>
+            <button class="btn btn-sm" data-unduh="${esc(c.nama)}">Unduh</button>
+          </div>`).join("") : '<div class="empty" style="padding:16px;">Belum ada cadangan.</div>'}
+      </div>
+    </div>`;
+
+  const bt = $("#cadUnduhTerbaru");
+  if (bt && daftar.length) bt.addEventListener("click", () => unduhCadangan(daftar[0].nama));
+  $all("[data-unduh]", body).forEach(b => b.addEventListener("click", () => unduhCadangan(b.dataset.unduh)));
+  $("#cadBuat").addEventListener("click", async () => {
+    const btn = $("#cadBuat"); btn.disabled = true; btn.textContent = "Membuat…";
+    try {
+      const r = await apiCadangan("", { method: "POST" });
+      if (!r.ok) throw new Error();
+      const h = await r.json();
+      toast(h.mundur ? "Cadangan dibuat, tapi data terdeteksi mundur" : "Cadangan dibuat");
+    } catch (e) { toast("Gagal membuat cadangan"); }
+    renderKelolaCadangan(); cekStatusCadangan();
+  });
+  const terima = $("#cadTerima");
+  if (terima) terima.addEventListener("click", async () => {
+    if (!confirm("Ini mematikan peringatan dan menjadikan data sekarang sebagai patokan baru.\n\nLakukan hanya kalau kamu yakin data sekarang memang yang benar — misalnya sudah dipulihkan, atau sengaja diisi ulang. Lanjutkan?")) return;
+    try {
+      const r = await apiCadangan("/terima", { method: "POST" });
+      if (!r.ok) throw new Error();
+      toast("Peringatan dimatikan");
+    } catch (e) { toast("Gagal"); }
+    renderKelolaCadangan(); cekStatusCadangan();
+  });
+}
+
 let kelolaSub = "kategori";
 function renderKelola(){
   const v = $("#viewKelola");
@@ -2913,6 +3047,7 @@ function renderKelolaBody(){
   if (kelolaSub === "kategori") renderKelolaKategori();
   else if (kelolaSub === "kondimen") renderKelolaKondimen();
   else if (kelolaSub === "cabang") renderKelolaCabang();
+  else if (kelolaSub === "cadangan") renderKelolaCadangan();
   else renderKelolaLog();
 }
 
