@@ -140,7 +140,7 @@ $("#logoutBtn").addEventListener("click", async () => { await sb.auth.signOut();
 // ---------------------------------------------------------------------
 async function bootData(){
   tampilkanSkeleton();
-  await Promise.all([loadHargaAcuan(), loadKonversi(), loadManual(), loadKategori(), loadCabang(), loadKondimen()]);
+  await Promise.all([loadHargaAcuan(), loadKonversi(), loadManual(), loadKategori(), loadCabang(), loadKondimen(), loadPengaturan()]);
   await loadProduk();
   cekStatusCadangan(); // sengaja tanpa await -- banner boleh muncul belakangan, jangan tahan layar
 }
@@ -169,6 +169,85 @@ async function loadKategori(){
   const { data } = await sb.from("kategori_produk").select("*").eq("is_deleted", false).order("level").order("urutan");
   kategoriList = (data || []).map(r => ({ id: r.id, nama: r.nama, parent_id: r.parent_id, level: r.level, urutan: r.urutan }));
 }
+// ---------------------------------------------------------------------
+//  PENGATURAN HPP — margin, overhead & biaya operasional per cabang/kategori
+// ---------------------------------------------------------------------
+// Dulu ketiganya diisi PER PRODUK, jadi mengubah kebijakan margin berarti
+// membuka puluhan produk satu per satu. Sekarang jadi pengaturan kelompok,
+// diatur dari judul kolom tabel Produk. Lihat backend/src/lib/pengaturanHpp.ts.
+//
+// Aturan pencarian di cariPengaturan() HARUS sama persis dengan yang di
+// backend — kalau berbeda, angka di layar tidak sama dengan yang dihitung
+// server tiap jam 03:00.
+let pengaturanList = [];
+const PENGATURAN_BAWAAN = { id: null, cabang_id: null, kategori_id: null, margin: 60, overhead: 15, biaya: [] };
+
+async function apiHpp(path, opts){
+  let token = "";
+  try { token = localStorage.getItem("hpp_token") || ""; } catch (e) {}
+  const base = (typeof API_BASE_URL !== "undefined" && API_BASE_URL) || "";
+  const o = Object.assign({ cache: "no-store" }, opts || {});
+  o.headers = Object.assign({ "Content-Type": "application/json", Authorization: "Bearer " + token }, (opts && opts.headers) || {});
+  return fetch(base + path, o);
+}
+
+async function loadPengaturan(){
+  try {
+    const r = await apiHpp("/api/pengaturan-hpp");
+    if (!r.ok) throw new Error("status " + r.status);
+    // Backend ini bukan lewat shim supabase, jadi namanya camelCase & angkanya
+    // string (Decimal) — dirapikan di sini sekali saja.
+    pengaturanList = (await r.json()).map(x => ({
+      id: x.id,
+      cabang_id: x.cabangHppId || null,
+      kategori_id: x.kategoriId || null,
+      margin: Number(x.marginPersen),
+      overhead: Number(x.overheadPersen),
+      biaya: (x.biaya || []).map(b => ({ label: b.label, mode: b.mode, value: Number(b.value), aktif: !!b.aktif })),
+    }));
+  } catch (e) {
+    console.error("gagal memuat pengaturan HPP:", e);
+    pengaturanList = [];
+  }
+}
+
+function cariPengaturan(cabangId, kategoriId){
+  const ambil = (c, k) => pengaturanList.find(x => x.cabang_id === c && x.kategori_id === k) || null;
+  // rantai kategori: dari yang paling khusus naik ke induknya
+  const rantai = [];
+  let kat = kategoriId || null;
+  for (let i = 0; kat && i < 10; i++){
+    rantai.push(kat);
+    const k = kategoriList.find(x => x.id === kat);
+    kat = k ? (k.parent_id || null) : null;
+  }
+  for (const id of rantai){
+    const khusus = cabangId ? ambil(cabangId, id) : null;
+    if (khusus) return khusus;
+    const semua = ambil(null, id);
+    if (semua) return semua;
+  }
+  const perCabang = cabangId ? ambil(cabangId, null) : null;
+  if (perCabang) return perCabang;
+  return ambil(null, null) || PENGATURAN_BAWAAN;
+}
+
+// Jenis biaya yang saklarnya mati tidak ikut dihitung — datanya tetap ada.
+function hitungBiayaOps(material, biaya){
+  return (biaya || []).reduce((t, b) => b.aktif ? t + (b.mode === "persen" ? (b.value / 100) * material : b.value) : t, 0);
+}
+function ringkasBiaya(biaya){
+  const a = (biaya || []).filter(b => b.aktif);
+  if (!a.length) return "—";
+  return a.map(b => b.mode === "persen" ? `${b.label} ${b.value}%` : `${b.label} ${rp(b.value)}`).join(" + ");
+}
+function namaPengaturan(p){
+  if (!p || (!p.cabang_id && !p.kategori_id)) return "Umum";
+  const c = p.cabang_id ? (cabangList.find(x => x.id === p.cabang_id) || {}).nama || "?" : null;
+  const k = p.kategori_id ? (kategoriList.find(x => x.id === p.kategori_id) || {}).nama || "?" : null;
+  return [c, k].filter(Boolean).join(" › ");
+}
+
 async function loadCabang(){
   const { data } = await sb.from("cabang_hpp").select("*").order("created_at");
   cabangList = (data || []).map(r => ({ id: r.id, nama: r.nama, aktif: r.aktif }));
@@ -882,6 +961,8 @@ function prodRowHtml(p, showKat){
   const marginAktual = hargaEfektif > 0 ? Math.round((hargaEfektif - hppNum) / hargaEfektif * 100) : null;
   const markup = hppNum > 0 ? Math.round((hargaEfektif - hppNum) / hppNum * 100) : null;
   const updateTgl = infoTanggal(p.updated_at).teks;
+  // Kebijakan yang berlaku untuk produk ini (dari pengaturan cabang/kategori).
+  const aturProduk = cariPengaturan(p.cabang_hpp_id || null, p.kategori_id || null);
   const katLabel = showKat ? `<div class="ct-tgl">${esc(p.kategori_id ? katPathNoRoot(p.kategori_id) : "Tanpa kategori")}</div>` : "";
   return `<tr class="prod-row ${belum ? "belum" : ""} ${edge}" data-id="${esc(p.id)}">
     <td><span class="pnm">${esc(p.nama)}</span>${usang}${takHitung}${katLabel}</td>
@@ -895,6 +976,8 @@ function prodRowHtml(p, showKat){
     <td class="r"><span class="num-val hl">${belum ? "—" : rp(hargaEfektif)}</span></td>
     <td class="r">${selisihHtml}</td>
     <td class="r"><span class="num-val">${marginRekom == null ? "—" : marginRekom + "%"}</span></td>
+    <td class="r"><span class="atur-sel">${esc(ringkasBiaya(aturProduk.biaya))}</span></td>
+    <td class="r"><span class="num-val">${aturProduk.overhead}%</span></td>
     <td class="r"><span class="num-val">${marginAktual == null ? "—" : marginAktual + "%"}</span></td>
     <td class="r"><span class="num-val">${markup == null ? "—" : markup + "%"}</span></td>
     <td><div class="ct-tgl">${belum ? "—" : updateTgl}</div></td>
@@ -904,11 +987,15 @@ function prodRowHtml(p, showKat){
     </td>
   </tr>`;
 }
+// Gerigi di judul kolom: margin, biaya ops & overhead bukan lagi isian per
+// produk, jadi pengaturannya dibuka dari judul kolomnya sendiri.
+const GERIGI_ATUR = '<button class="th-atur" data-atur-hpp="1" title="Atur untuk semua produk"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg></button>';
+
 function prodCardHtml(title, count, rows, katKey){
   return `<div class="prod-card"${katKey ? ` data-kat="${esc(katKey)}"` : ""}>
     <div class="prod-card-head"><span>${esc(title)}</span><span class="cnt">${count}</span></div>
     <div class="prod-table-wrap"><table class="prod-table">
-      <thead><tr><th>Produk</th><th>Status</th><th>Cabang &amp; tanggal</th><th class="r">HPP</th><th class="r">Harga rekomendasi</th><th class="r">Harga jual</th><th class="r">Selisih</th><th class="r">Margin rekom</th><th class="r">Margin aktual</th><th class="r" title="Harga jual di atas HPP (basis modal)">Markup</th><th>Update terakhir</th><th></th></tr></thead>
+      <thead><tr><th>Produk</th><th>Status</th><th>Cabang &amp; tanggal</th><th class="r">HPP</th><th class="r">Harga rekomendasi</th><th class="r">Harga jual</th><th class="r">Selisih</th><th class="r">Margin rekom ${GERIGI_ATUR}</th><th class="r">Biaya ops ${GERIGI_ATUR}</th><th class="r">Overhead ${GERIGI_ATUR}</th><th class="r">Margin aktual</th><th class="r" title="Harga jual di atas HPP (basis modal)">Markup</th><th>Update terakhir</th><th></th></tr></thead>
       <tbody>${rows}</tbody>
     </table></div>
   </div>`;
@@ -1031,6 +1118,7 @@ function renderProdukList(){
     if (e.target.closest(".prod-dup")) return;
     openEdit(it.dataset.id);
   }));
+  $all("[data-atur-hpp]", el).forEach(b => b.addEventListener("click", (e) => { e.stopPropagation(); bukaPengaturanModal(); }));
   $all("[data-dup]", el).forEach(b => b.addEventListener("click", (e) => { e.stopPropagation(); duplikatProduk(b.dataset.dup); }));
   $all("[data-log]", el).forEach(b => b.addEventListener("click", (e) => { e.stopPropagation(); bukaLogHppProduk(b.dataset.log); }));
 }
@@ -1375,12 +1463,10 @@ async function updateSemuaHarga(){
       material += (found.harga / (found.konv.isi || 1)) * (Number(r.qty_pakai) || 0);
     });
 
-    const { data: opexs } = await sb.from("biaya_operasional_produk").select("*").eq("produk_id", p.id);
-    let opex = 0;
-    (opexs || []).forEach(o => { opex += o.mode === "persen" ? (Number(o.value) / 100) * material : Number(o.value); });
-
-    const overheadPersen = Number(p.overhead_persen) || 15;
-    const marginPersen = Number(p.target_margin_persen) || 60;
+    const atur = cariPengaturan(p.cabang_hpp_id || null, p.kategori_id || null);
+    const opex = hitungBiayaOps(material, atur.biaya);
+    const overheadPersen = atur.overhead;
+    const marginPersen = atur.margin;
     const overhead = (overheadPersen / 100) * (material + opex);
     const final = material + opex + overhead;
     const hargaJual = marginPersen < 100 ? final / (1 - marginPersen / 100) : final;
@@ -1427,12 +1513,6 @@ async function duplikatProduk(id){
     await sb.from("resep_bahan").insert(resep.map(r => ({
       produk_id: baru.id, bahan_nama_normal: r.bahan_nama_normal, sumber_bahan: r.sumber_bahan,
       qty_pakai: r.qty_pakai, harga_override: r.harga_override,
-    })));
-  }
-  const { data: opex } = await sb.from("biaya_operasional_produk").select("*").eq("produk_id", id);
-  if (opex && opex.length){
-    await sb.from("biaya_operasional_produk").insert(opex.map(o => ({
-      produk_id: baru.id, label: o.label, mode: o.mode, value: o.value,
     })));
   }
   await catatLog(baru.id, namaBaru.trim(), "buat", "Duplikat dari " + p.nama);
@@ -1543,16 +1623,7 @@ function renderAddView(){
       </div>
       <div id="f-proses"></div>
     </div>
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-        <label style="font-size:13px;color:var(--ink-soft);font-weight:500;">Biaya operasional lain</label>
-        <button class="btn btn-sm" id="f-add-opex">+ Tambah</button>
-      </div>
-      <div id="f-opex"></div>
-      <div class="slider-field" style="margin-top:16px;">
-        <div class="slider-top"><label>Overhead gaji &amp; tak langsung</label><span class="val" id="f-oh-val">${formOverheadPersen}%</span></div>
-        <input type="range" id="f-oh" min="0" max="40" value="${formOverheadPersen}" step="1">
-        <div class="opex-note">% dari (material + biaya operasional)</div>
-      </div>
+      <div id="f-atur-info" class="atur-info"></div>
     </div>
 
     <div class="card">
@@ -1561,10 +1632,7 @@ function renderAddView(){
       <div class="sum-line"><span class="lbl">Overhead gaji &amp; tak langsung</span><span class="amt" id="s-overhead">Rp 0</span></div>
       <div class="sum-line sum-final"><span class="lbl">HPP final</span><span class="amt" id="s-final">Rp 0</span></div>
 
-      <div class="slider-field" style="margin-top:16px;">
-        <div class="slider-top"><label>Target margin</label><span class="val" id="f-mg-val">${formMargin}%</span></div>
-        <input type="range" id="f-mg" min="30" max="80" value="${formMargin}" step="1">
-      </div>
+      <div class="atur-mini" id="f-atur-margin"></div>
 
       <div class="price-box">
         <span class="lbl">Harga jual disarankan</span>
@@ -1589,10 +1657,11 @@ function renderAddView(){
   cari.addEventListener("focus", () => { cari.blur(); bukaBahanModal(); });
   cari.addEventListener("click", () => bukaBahanModal());
 
-  $("#f-oh").addEventListener("input", (e) => { formOverheadPersen = +e.target.value; $("#f-oh-val").textContent = formOverheadPersen + "%"; recalc(); autoDraft(); });
-  $("#f-mg").addEventListener("input", (e) => { formMargin = +e.target.value; $("#f-mg-val").textContent = formMargin + "%"; recalc(); autoDraft(); });
+  // Margin, overhead & biaya operasional tidak lagi diisi per produk —
+  // ikut pengaturan cabang/kategori. Ganti cabang = kebijakannya bisa ikut
+  // berubah, jadi hitung ulang pratinjaunya.
+  { const cb = $("#f-cabang"); if (cb) cb.addEventListener("change", () => recalc()); }
   $("#f-harga-aktual").addEventListener("input", (e) => { const v = e.target.value.trim(); formHargaAktual = v === "" ? null : (parseFloat(v) || 0); recalc(); autoDraft(); });
-  $("#f-add-opex").addEventListener("click", () => { formOpex.push({ label: "", mode: "manual", value: 0 }); renderOpex(); recalc(); });
   $("#f-add-proses").addEventListener("click", () => { formProses.push({ teks: "", level: "normal" }); renderProses(); autoDraft(); });
   $("#f-simpan").addEventListener("click", saveProduk);
   $("#f-back").addEventListener("click", () => switchTab("list"));
@@ -1604,7 +1673,7 @@ function renderAddView(){
   const hapusBtn = $("#f-hapus");
   if (hapusBtn) hapusBtn.addEventListener("click", deleteProduk);
 
-  renderFormBahan(); renderOpex(); renderProses(); renderFotoPlating(); recalc();
+  renderFormBahan(); renderProses(); renderFotoPlating(); recalc();
   renderKatTingkat();
 }
 
@@ -2137,31 +2206,6 @@ function lengkapiSatuan(row, i){
   });
 }
 
-function renderOpex(){
-  const el = $("#f-opex");
-  el.innerHTML = formOpex.map((o, i) => `
-    <div class="opex-row" data-i="${i}">
-      <div class="opex-grid">
-        <input type="text" placeholder="mis. Gas, listrik" value="${esc(o.label)}" data-act="label">
-        <div class="mode-toggle">
-          <button data-mode="manual" class="${o.mode === "manual" ? "active" : ""}">Rp</button>
-          <button data-mode="persen" class="${o.mode === "persen" ? "active" : ""}">%</button>
-        </div>
-        <input type="number" min="0" value="${o.value}" data-act="value">
-        <span class="opex-hasil" data-hasil>Rp 0</span>
-        <button class="icon-btn" data-act="rm" aria-label="Hapus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
-      </div>
-      ${o.mode === "persen" ? '<div class="opex-note">% dari HPP material</div>' : ""}
-    </div>`).join("");
-  $all(".opex-row", el).forEach(row => {
-    const i = +row.dataset.i;
-    row.querySelector('[data-act="label"]').addEventListener("input", (e) => { formOpex[i].label = e.target.value; });
-    row.querySelector('[data-act="value"]').addEventListener("input", (e) => { formOpex[i].value = parseFloat(e.target.value) || 0; recalc(); });
-    row.querySelector('[data-act="rm"]').addEventListener("click", () => { formOpex.splice(i, 1); renderOpex(); recalc(); });
-    $all("[data-mode]", row).forEach(btn => btn.addEventListener("click", () => { formOpex[i].mode = btn.dataset.mode; formOpex[i].value = btn.dataset.mode === "persen" ? 10 : 0; renderOpex(); recalc(); }));
-  });
-}
-
 function calcMaterial(){
   let total = 0;
   formBahan.forEach((b, idx) => {
@@ -2178,22 +2222,41 @@ function calcMaterial(){
   });
   return total;
 }
-function calcOpex(material){
-  let total = 0;
-  formOpex.forEach((o, idx) => {
-    const nominal = o.mode === "persen" ? (o.value / 100) * material : o.value;
-    total += nominal;
-    const h = $(`.opex-row[data-i="${idx}"] [data-hasil]`);
-    if (h) h.textContent = rp(nominal);
-  });
-  return total;
+// Pengaturan yang berlaku untuk produk yang sedang dibuka di form, mengikuti
+// cabang & kategori yang sedang dipilih (jadi pratinjau ikut berubah begitu
+// salah satunya diganti).
+function pengaturanFormAktif(){
+  const cab = $("#f-cabang") ? ($("#f-cabang").value || null) : null;
+  return cariPengaturan(cab, formKategoriId || null);
 }
+
+function renderPengaturanInfo(){
+  const atur = pengaturanFormAktif();
+  const el = $("#f-atur-info");
+  if (el){
+    el.innerHTML = `
+      <div class="atur-baris"><span>Mengikuti pengaturan <b>${esc(namaPengaturan(atur))}</b></span><button class="btn btn-sm" id="f-atur-buka">Atur</button></div>
+      <div class="atur-rinci">Biaya operasional: ${esc(ringkasBiaya(atur.biaya))} &middot; Overhead ${atur.overhead}% &middot; Margin ${atur.margin}%</div>
+      <div class="atur-nota">Berlaku untuk semua produk di kelompok ini, bukan cuma produk ini.</div>`;
+    const b = $("#f-atur-buka"); if (b) b.addEventListener("click", bukaPengaturanModal);
+  }
+  const m = $("#f-atur-margin");
+  if (m) m.textContent = `Margin ${atur.margin}% — dari pengaturan ${namaPengaturan(atur)}`;
+}
+
 function recalc(){
   const material = calcMaterial();
-  const opex = calcOpex(material);
-  const overhead = (formOverheadPersen / 100) * (material + opex);
+  const atur = pengaturanFormAktif();
+  // Disimpan ke variabel form supaya tersimpan ke kolom produk saat Simpan —
+  // kolom itu kini cerminan pengaturan, bukan isian sendiri.
+  formOverheadPersen = atur.overhead;
+  formMargin = atur.margin;
+  formOpex = atur.biaya.filter(b => b.aktif).map(b => ({ label: b.label, mode: b.mode, value: b.value }));
+  renderPengaturanInfo();
+  const opex = hitungBiayaOps(material, atur.biaya);
+  const overhead = (atur.overhead / 100) * (material + opex);
   const final = material + opex + overhead;
-  const harga = formMargin < 100 ? final / (1 - formMargin / 100) : final;
+  const harga = atur.margin < 100 ? final / (1 - atur.margin / 100) : final;
   $("#s-material") && ($("#s-material").textContent = rp(material));
   $("#s-overhead") && ($("#s-overhead").textContent = rp(overhead));
   $("#s-opex") && ($("#s-opex").textContent = rp(opex));
@@ -2249,7 +2312,6 @@ async function saveProduk(){
     const { error } = await sb.from("produk").update(produkRow).eq("id", editingProdukId);
     if (error){ toast("Gagal menyimpan"); console.error(error); return; }
     await sb.from("resep_bahan").delete().eq("produk_id", editingProdukId);
-    await sb.from("biaya_operasional_produk").delete().eq("produk_id", editingProdukId);
   } else {
     const { data, error } = await sb.from("produk").insert(produkRow).select("id").single();
     if (error){ toast("Gagal menyimpan"); console.error(error); return; }
@@ -2261,11 +2323,6 @@ async function saveProduk(){
     qty_pakai: b.qty || 0, harga_override: b.override,
   }));
   if (resepRows.length) await sb.from("resep_bahan").insert(resepRows);
-
-  const opexRows = formOpex.filter(o => o.label.trim() || o.value).map(o => ({
-    produk_id: produkId, label: o.label || "Biaya", mode: o.mode, value: o.value || 0,
-  }));
-  if (opexRows.length) await sb.from("biaya_operasional_produk").insert(opexRows);
 
   // Foto plating (tabel terpisah supaya daftar produk tidak berat) — upsert
   // kalau ada, hapus kalau dikosongkan. Kegagalan foto tidak membatalkan simpan
@@ -2295,7 +2352,6 @@ async function openEdit(id){
   formHargaAktual = (p.harga_jual_aktual !== null && p.harga_jual_aktual !== undefined) ? Number(p.harga_jual_aktual) : null;
 
   const { data: reseps } = await sb.from("resep_bahan").select("*").eq("produk_id", id);
-  const { data: opexs } = await sb.from("biaya_operasional_produk").select("*").eq("produk_id", id);
 
   formBahan = (reseps || []).map(r => {
     const found = allBahan().find(b => b.nama_normal === r.bahan_nama_normal);
@@ -2322,7 +2378,6 @@ async function openEdit(id){
       hargaBeliOverride: null,
     };
   });
-  formOpex = (opexs || []).map(o => ({ label: o.label, mode: o.mode, value: Number(o.value) || 0 }));
   formKategoriId = p.kategori_id || "";
   try{ formProses = p.cara_proses ? JSON.parse(p.cara_proses) : []; }catch(e){ formProses = []; }
   if (!Array.isArray(formProses)) formProses = [];
@@ -3021,6 +3076,144 @@ async function renderKelolaCadangan(){
     } catch (e) { toast("Gagal"); }
     renderKelolaCadangan(); cekStatusCadangan();
   });
+}
+
+// ---------------------------------------------------------------------
+//  PANEL PENGATURAN HPP (dibuka dari gerigi di judul kolom tabel Produk)
+// ---------------------------------------------------------------------
+let draftPengaturan = null;
+
+function bukaPengaturanModal(){
+  // Salinan kerja: perubahan baru berlaku setelah Simpan ditekan.
+  draftPengaturan = pengaturanList.map(x => ({ ...x, biaya: x.biaya.map(b => ({ ...b })) }));
+  if (!draftPengaturan.some(x => !x.cabang_id && !x.kategori_id)){
+    draftPengaturan.unshift({ id: null, cabang_id: null, kategori_id: null, margin: 60, overhead: 15, biaya: [] });
+  }
+  let modal = $("#pengaturanModal");
+  if (!modal){
+    modal = document.createElement("div");
+    modal.id = "pengaturanModal";
+    modal.className = "dash-modal hidden";
+    modal.innerHTML = `<div class="dm-backdrop"></div>
+      <div class="dm-panel" style="max-width:720px;">
+        <div class="dm-head"><h3>Biaya &amp; margin</h3><button class="icon-btn" id="pgClose" aria-label="Tutup"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
+        <div class="dm-body" id="pgBody"></div>
+      </div>`;
+    document.body.appendChild(modal);
+    modal.querySelector(".dm-backdrop").addEventListener("click", () => modal.classList.add("hidden"));
+    modal.querySelector("#pgClose").addEventListener("click", () => modal.classList.add("hidden"));
+  }
+  renderPengaturanModal();
+  modal.classList.remove("hidden");
+  requestAnimationFrame(() => modal.classList.add("show"));
+}
+
+function opsiCabang(terpilih){
+  return `<option value="">Semua cabang</option>` +
+    cabangList.map(c => `<option value="${esc(c.id)}" ${c.id === terpilih ? "selected" : ""}>${esc(c.nama)}</option>`).join("");
+}
+function opsiKategori(terpilih){
+  return `<option value="">Semua kategori</option>` +
+    kategoriList.map(k => `<option value="${esc(k.id)}" ${k.id === terpilih ? "selected" : ""}>${"— ".repeat(Math.max(0, k.level - 1))}${esc(k.nama)}</option>`).join("");
+}
+
+function renderPengaturanModal(){
+  const body = $("#pgBody");
+  const kartu = draftPengaturan.map((b, i) => {
+    const umum = !b.cabang_id && !b.kategori_id;
+    const biaya = b.biaya.map((x, j) => `
+      <div class="pg-biaya" data-i="${i}" data-j="${j}">
+        <label class="pg-saklar" title="${x.aktif ? "Ikut dihitung ke HPP" : "Tidak ikut dihitung"}"><input type="checkbox" data-biaya-aktif ${x.aktif ? "checked" : ""}></label>
+        <input type="text" data-biaya-label placeholder="Nama biaya (mis. gas, kemasan)" value="${esc(x.label)}">
+        <div class="mode-toggle">
+          <button data-biaya-mode="manual" class="${x.mode === "manual" ? "active" : ""}">Rp</button>
+          <button data-biaya-mode="persen" class="${x.mode === "persen" ? "active" : ""}">%</button>
+        </div>
+        <input type="number" data-biaya-value value="${x.value}" step="${x.mode === "persen" ? "0.1" : "100"}">
+        <button class="icon-btn" data-biaya-hapus aria-label="Hapus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+      </div>`).join("");
+    return `
+      <div class="pg-kartu" data-i="${i}">
+        <div class="pg-head">
+          ${umum
+            ? `<span class="pg-judul">Umum <small>berlaku untuk semua produk yang tidak punya pengaturan khusus</small></span>`
+            : `<select data-pg-cabang>${opsiCabang(b.cabang_id)}</select><select data-pg-kategori>${opsiKategori(b.kategori_id)}</select>
+               <button class="icon-btn" data-pg-hapus aria-label="Hapus pengaturan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14z"/></svg></button>`}
+        </div>
+        <div class="pg-angka">
+          <label>Margin rekomendasi<div class="pg-in"><input type="number" data-pg-margin value="${b.margin}" min="0" max="99" step="1"><span>%</span></div></label>
+          <label>Overhead<div class="pg-in"><input type="number" data-pg-overhead value="${b.overhead}" min="0" max="200" step="1"><span>%</span></div></label>
+        </div>
+        <div class="pg-biaya-judul">Biaya operasional lain <small>centang = ikut dihitung ke HPP</small></div>
+        ${biaya || '<div class="pg-kosong">Belum ada. Tanpa ini, HPP = biaya bahan + overhead saja.</div>'}
+        <button class="btn btn-sm" data-pg-tambah-biaya>+ Jenis biaya</button>
+      </div>`;
+  }).join("");
+
+  body.innerHTML = `
+    <p class="pg-intro">Berlaku untuk <b>semua produk</b> sekaligus, tidak perlu dibuka satu per satu. Produk mengikuti pengaturan yang paling cocok: kategorinya dulu (naik ke kategori induk kalau tidak diatur), lalu cabangnya, terakhir Umum.</p>
+    ${kartu}
+    <button class="btn btn-sm" id="pgTambah" style="margin-top:4px;">+ Pengaturan khusus cabang / kategori</button>
+    <div class="pg-aksi">
+      <button class="btn btn-primary" id="pgSimpan">Simpan &amp; hitung ulang semua produk</button>
+      <span class="pg-catatan">HPP semua produk langsung diperbarui dan tercatat di log.</span>
+    </div>`;
+
+  // Isian teks/angka: tulis ke draft tanpa render ulang, supaya fokus ketikan
+  // tidak lompat (pola yang sama dipakai di editor kondimen).
+  $all("[data-pg-margin]", body).forEach(el => el.addEventListener("input", e => { draftPengaturan[+e.target.closest(".pg-kartu").dataset.i].margin = parseFloat(e.target.value) || 0; }));
+  $all("[data-pg-overhead]", body).forEach(el => el.addEventListener("input", e => { draftPengaturan[+e.target.closest(".pg-kartu").dataset.i].overhead = parseFloat(e.target.value) || 0; }));
+  $all("[data-biaya-label]", body).forEach(el => el.addEventListener("input", e => { const r = e.target.closest(".pg-biaya"); draftPengaturan[+r.dataset.i].biaya[+r.dataset.j].label = e.target.value; }));
+  $all("[data-biaya-value]", body).forEach(el => el.addEventListener("input", e => { const r = e.target.closest(".pg-biaya"); draftPengaturan[+r.dataset.i].biaya[+r.dataset.j].value = parseFloat(e.target.value) || 0; }));
+  $all("[data-biaya-aktif]", body).forEach(el => el.addEventListener("change", e => { const r = e.target.closest(".pg-biaya"); draftPengaturan[+r.dataset.i].biaya[+r.dataset.j].aktif = e.target.checked; }));
+
+  // Perubahan struktur: render ulang.
+  $all("[data-pg-cabang]", body).forEach(el => el.addEventListener("change", e => { draftPengaturan[+e.target.closest(".pg-kartu").dataset.i].cabang_id = e.target.value || null; renderPengaturanModal(); }));
+  $all("[data-pg-kategori]", body).forEach(el => el.addEventListener("change", e => { draftPengaturan[+e.target.closest(".pg-kartu").dataset.i].kategori_id = e.target.value || null; renderPengaturanModal(); }));
+  $all("[data-biaya-mode]", body).forEach(el => el.addEventListener("click", e => {
+    const r = e.target.closest(".pg-biaya");
+    const b = draftPengaturan[+r.dataset.i].biaya[+r.dataset.j];
+    b.mode = el.dataset.biayaMode; b.value = b.mode === "persen" ? 10 : 0;
+    renderPengaturanModal();
+  }));
+  $all("[data-biaya-hapus]", body).forEach(el => el.addEventListener("click", e => { const r = e.target.closest(".pg-biaya"); draftPengaturan[+r.dataset.i].biaya.splice(+r.dataset.j, 1); renderPengaturanModal(); }));
+  $all("[data-pg-tambah-biaya]", body).forEach(el => el.addEventListener("click", e => { draftPengaturan[+e.target.closest(".pg-kartu").dataset.i].biaya.push({ label: "", mode: "persen", value: 10, aktif: true }); renderPengaturanModal(); }));
+  $all("[data-pg-hapus]", body).forEach(el => el.addEventListener("click", e => { draftPengaturan.splice(+e.target.closest(".pg-kartu").dataset.i, 1); renderPengaturanModal(); }));
+  $("#pgTambah").addEventListener("click", () => {
+    const umum = draftPengaturan.find(x => !x.cabang_id && !x.kategori_id);
+    draftPengaturan.push({ id: null, cabang_id: cabangList[0] ? cabangList[0].id : null, kategori_id: null, margin: umum ? umum.margin : 60, overhead: umum ? umum.overhead : 15, biaya: [] });
+    renderPengaturanModal();
+  });
+  $("#pgSimpan").addEventListener("click", simpanPengaturan);
+}
+
+async function simpanPengaturan(){
+  const kunci = draftPengaturan.map(b => `${b.cabang_id || "-"}|${b.kategori_id || "-"}`);
+  if (new Set(kunci).size !== kunci.length){ toast("Ada dua pengaturan untuk cabang & kategori yang sama"); return; }
+  const kosong = draftPengaturan.some(b => b.biaya.some(x => !x.label.trim() && x.value));
+  if (kosong){ toast("Ada jenis biaya yang belum diberi nama"); return; }
+
+  const btn = $("#pgSimpan"); btn.disabled = true; btn.textContent = "Menyimpan & menghitung ulang…";
+  try {
+    const r = await apiHpp("/api/pengaturan-hpp", {
+      method: "POST",
+      body: JSON.stringify({ baris: draftPengaturan.map(b => ({
+        cabangHppId: b.cabang_id, kategoriId: b.kategori_id,
+        marginPersen: b.margin, overheadPersen: b.overhead,
+        biaya: b.biaya.filter(x => x.label.trim()).map(x => ({ label: x.label.trim(), mode: x.mode, value: x.value, aktif: x.aktif })),
+      })) }),
+    });
+    if (!r.ok){ const e = await r.json().catch(() => ({})); throw new Error(e.error || "status " + r.status); }
+    const hasil = await r.json();
+    $("#pengaturanModal").classList.add("hidden");
+    await loadPengaturan();
+    await loadProduk();
+    toast(`Tersimpan — ${hasil.produkBerubah} produk HPP-nya berubah`);
+  } catch (e) {
+    console.error(e);
+    toast("Gagal menyimpan: " + e.message);
+    btn.disabled = false; btn.textContent = "Simpan & hitung ulang semua produk";
+  }
 }
 
 let kelolaSub = "kategori";

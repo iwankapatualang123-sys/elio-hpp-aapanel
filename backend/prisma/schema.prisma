@@ -26,28 +26,28 @@ datasource db {
 }
 
 model Produk {
-  id                   String    @id
-  nama                 String
-  jenis                String // selalu 'fnb' saat ini — kolom dipertahankan kalau nanti ada jenis lain (mis. 'jasa', terlihat di UI menuJasa meski belum ada datanya)
-  kategori             String? // teks kategori legacy (mis. "FNB"), dipertahankan di samping kategoriId — dipakai duplikatProduk sebagai fallback
-  kategoriId           String?   @map("kategori_id")
-  cabangHppId          String?   @map("cabang_hpp_id")
-  overheadPersen       Decimal   @default(15) @map("overhead_persen") @db.Decimal(6, 2)
-  targetMarginPersen   Decimal   @default(60) @map("target_margin_persen") @db.Decimal(6, 2)
-  hppTerakhir          Decimal   @default(0) @map("hpp_terakhir") @db.Decimal(14, 2)
-  hargaJualDisarankan  Decimal   @default(0) @map("harga_jual_disarankan") @db.Decimal(14, 2)
-  hargaJualAktual      Decimal?  @map("harga_jual_aktual") @db.Decimal(14, 2) // harga jual sungguhan di outlet, diisi manual — beda dari hargaJualDisarankan (hasil hitung margin)
-  caraProses           String?   @map("cara_proses") @db.Text // JSON-stringified [{teks,level}] — disimpan apa adanya, di-parse di frontend
-  isDeleted            Boolean   @default(false) @map("is_deleted")
-  createdAt            DateTime  @default(now()) @map("created_at")
-  updatedAt             DateTime  @default(now()) @updatedAt @map("updated_at")
+  id                  String   @id
+  nama                String
+  jenis               String // selalu 'fnb' saat ini — kolom dipertahankan kalau nanti ada jenis lain (mis. 'jasa', terlihat di UI menuJasa meski belum ada datanya)
+  kategori            String? // teks kategori legacy (mis. "FNB"), dipertahankan di samping kategoriId — dipakai duplikatProduk sebagai fallback
+  kategoriId          String?  @map("kategori_id")
+  cabangHppId         String?  @map("cabang_hpp_id")
+  overheadPersen      Decimal  @default(15) @map("overhead_persen") @db.Decimal(6, 2)
+  targetMarginPersen  Decimal  @default(60) @map("target_margin_persen") @db.Decimal(6, 2)
+  hppTerakhir         Decimal  @default(0) @map("hpp_terakhir") @db.Decimal(14, 2)
+  hargaJualDisarankan Decimal  @default(0) @map("harga_jual_disarankan") @db.Decimal(14, 2)
+  hargaJualAktual     Decimal? @map("harga_jual_aktual") @db.Decimal(14, 2) // harga jual sungguhan di outlet, diisi manual — beda dari hargaJualDisarankan (hasil hitung margin)
+  caraProses          String?  @map("cara_proses") @db.Text // JSON-stringified [{teks,level}] — disimpan apa adanya, di-parse di frontend
+  isDeleted           Boolean  @default(false) @map("is_deleted")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @default(now()) @updatedAt @map("updated_at")
 
-  kategoriRef    KategoriProduk?          @relation(fields: [kategoriId], references: [id])
-  cabang         CabangHpp?               @relation(fields: [cabangHppId], references: [id])
-  resepBahan     ResepBahan[]
+  kategoriRef      KategoriProduk?          @relation(fields: [kategoriId], references: [id])
+  cabang           CabangHpp?               @relation(fields: [cabangHppId], references: [id])
+  resepBahan       ResepBahan[]
   biayaOperasional BiayaOperasionalProduk[]
-  hppHistory     ProdukHppHistory[]
-  logs           ProdukLog[]
+  hppHistory       ProdukHppHistory[]
+  logs             ProdukLog[]
 
   @@index([kategoriId])
   @@index([cabangHppId])
@@ -70,12 +70,12 @@ model ProdukFoto {
 }
 
 model ResepBahan {
-  id               String   @id
-  produkId         String   @map("produk_id")
-  bahanNamaNormal  String   @map("bahan_nama_normal") // TIDAK di-FK: bisa merujuk harga_acuan_material (DB lain), material_manual, atau kondimen
-  sumberBahan      String   @map("sumber_bahan") // 'acuan' | 'manual' | 'kondimen'
-  qtyPakai         Decimal  @default(0) @map("qty_pakai") @db.Decimal(12, 3)
-  hargaOverride    Decimal? @map("harga_override") @db.Decimal(14, 4)
+  id              String   @id
+  produkId        String   @map("produk_id")
+  bahanNamaNormal String   @map("bahan_nama_normal") // TIDAK di-FK: bisa merujuk harga_acuan_material (DB lain), material_manual, atau kondimen
+  sumberBahan     String   @map("sumber_bahan") // 'acuan' | 'manual' | 'kondimen'
+  qtyPakai        Decimal  @default(0) @map("qty_pakai") @db.Decimal(12, 3)
+  hargaOverride   Decimal? @map("harga_override") @db.Decimal(14, 4)
 
   produk Produk @relation(fields: [produkId], references: [id], onDelete: Cascade)
 
@@ -163,10 +163,10 @@ model MaterialKonversi {
   // nama_normal adalah kunci alami dipakai onConflict upsert di kode lama —
   // dijadikan @id langsung (bukan surrogate id terpisah) supaya Prisma
   // upsert({where:{namaNormal:...}}) bisa mereplikasi perilaku itu persis.
-  namaNormal     String  @id @map("nama_normal")
-  nama           String
-  isiPerKemasan  Decimal @map("isi_per_kemasan") @db.Decimal(12, 3)
-  satuanPakai    String  @map("satuan_pakai")
+  namaNormal    String  @id @map("nama_normal")
+  nama          String
+  isiPerKemasan Decimal @map("isi_per_kemasan") @db.Decimal(12, 3)
+  satuanPakai   String  @map("satuan_pakai")
 
   @@map("material_konversi")
 }
@@ -216,4 +216,55 @@ model KondimenBahan {
 
   @@index([kondimenId])
   @@map("kondimen_bahan")
+}
+
+// Pengaturan HPP per cabang / kategori -- margin, overhead, dan biaya
+// operasional lain yang dulu diisi PER PRODUK (lihat BiayaOperasionalProduk,
+// kini tidak dipakai lagi untuk perhitungan).
+//
+// Kenapa pindah: tiap produk punya angkanya sendiri, jadi mengubah kebijakan
+// margin berarti membuka 81 produk satu per satu. Dicek di data Okt 2026:
+// angkanya sebenarnya seragam per cabang+kategori (Elio 60/15, Golio Hub
+// 30/30), jadi memang kebijakan per kelompok, bukan per produk.
+//
+// cabangHppId / kategoriId NULL = "berlaku untuk semua". Urutan pencarian ada
+// di src/lib/pengaturanHpp.ts. Sengaja TANPA foreign key ke cabang/kategori:
+// baris pengaturan yang cabang atau kategorinya terlanjur dihapus cukup
+// diabaikan saat pencarian, bukan menghalangi penghapusan.
+//
+// Keunikan pasangan (cabang, kategori) dijaga di kode, BUKAN unique index --
+// di MySQL beberapa baris NULL tetap dianggap berbeda, jadi index tidak bisa
+// mencegah dua baris "umum".
+model PengaturanHpp {
+  id             String   @id
+  cabangHppId    String?  @map("cabang_hpp_id")
+  kategoriId     String?  @map("kategori_id")
+  marginPersen   Decimal  @default(60) @map("margin_persen") @db.Decimal(6, 2)
+  overheadPersen Decimal  @default(15) @map("overhead_persen") @db.Decimal(6, 2)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at")
+
+  biaya PengaturanBiaya[]
+
+  @@index([cabangHppId, kategoriId])
+  @@map("pengaturan_hpp")
+}
+
+// Baris "biaya operasional lain" milik satu pengaturan. Bentuknya sengaja sama
+// dengan BiayaOperasionalProduk supaya perhitungannya tidak berubah.
+model PengaturanBiaya {
+  id           String  @id
+  pengaturanId String  @map("pengaturan_id")
+  label        String
+  mode         String // 'manual' | 'persen'
+  value        Decimal @default(0) @db.Decimal(14, 2)
+  // Mati = jenis biaya ini TIDAK ikut dihitung ke HPP, tapi datanya tetap
+  // tersimpan. Gunanya supaya user bisa melihat COGS murni bahan (semua
+  // dimatikan) lalu menyalakannya lagi tanpa mengetik ulang.
+  aktif        Boolean @default(true)
+
+  pengaturan PengaturanHpp @relation(fields: [pengaturanId], references: [id], onDelete: Cascade)
+
+  @@index([pengaturanId])
+  @@map("pengaturan_biaya")
 }

@@ -79,6 +79,27 @@ rentang itu, tidak ada salinan berkas tabel lain. User memilih MENGISI ULANG man
   Itulah gunanya tombol unduh — ingatkan user menyimpan salinan di komputernya.
 - Saran untuk user (belum dikerjakan): perpanjang retensi backup aaPanel dari 3 hari.
 
+## Pengaturan biaya & margin per cabang/kategori (Okt 2026)
+Margin, overhead, dan biaya operasional lain DULU diisi per produk; sekarang jadi
+pengaturan kelompok, dibuka dari gerigi di judul kolom tabel Produk.
+- Tabel `pengaturan_hpp` + `pengaturan_biaya` (lihat `backend/src/lib/pengaturanHpp.ts`).
+  `cabang_hpp_id`/`kategori_id` NULL = "semua". Tiap jenis biaya punya saklar
+  `aktif` — dimatikan = tidak ikut HPP tapi datanya tetap, supaya bisa melihat
+  COGS murni bahan lalu menyalakannya lagi.
+- Urutan pencarian: kategori produk (naik ke induknya) × cabang, lalu cabang
+  saja, lalu Umum, lalu bawaan 60/15. Di tiap tingkat kategori, pengaturan
+  khusus cabang menang atas yang semua-cabang.
+- **Aturan ini ditulis DUA KALI**: `backend/src/lib/pengaturanHpp.ts` dan
+  `cariPengaturan()` di `app/app.js`. Kalau mengubah salah satu, ubah keduanya —
+  kalau berbeda, angka di layar tidak sama dengan hasil hitung server jam 03:00.
+- Kolom `produk.overhead_persen`/`target_margin_persen` kini CERMINAN pengaturan
+  (disegarkan `terapkanPengaturan()`), bukan sumber kebenaran. Tabel
+  `biaya_operasional_produk` tidak dipakai lagi untuk perhitungan.
+- Pemindahan sekali jalan: `npm run pindahkan-pengaturan` (tanpa argumen = cuma
+  menampilkan rencana; `-- --jalankan` untuk memindahkan). Menyusun pengaturan
+  dari data yang ada supaya tidak ada HPP yang bergeser, lalu menghapus baris
+  biaya per produk. Berhenti kalau ada kelompok yang angkanya masih campur.
+
 ## Fitur yang sudah ada (per Agu 2026)
 - Produk: tabel per kategori (1 kartu/kategori), kolom HPP / harga rekomendasi /
   harga jual aktual / selisih / margin rekom / margin aktual / markup / update.

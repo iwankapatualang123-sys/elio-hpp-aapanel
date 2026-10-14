@@ -19,6 +19,7 @@ import kondimenRoutes from './routes/kondimen';
 import hargaAcuanMaterialRoutes from './routes/hargaAcuanMaterial';
 import widgetRoutes from './routes/widget';
 import cadanganRoutes from './routes/cadangan';
+import pengaturanHppRoutes from './routes/pengaturanHpp';
 import { buatCadangan, daftarCadangan, cekMundur } from './lib/cadangan';
 
 const app = express();
@@ -44,6 +45,7 @@ app.use('/api/harga-acuan-material', hargaAcuanMaterialRoutes);
 // Read-only, token-protected (bukan requireAuth) -- dipakai widget iframe.
 app.use('/api/widget', widgetRoutes);
 app.use('/api/cadangan', cadanganRoutes);
+app.use('/api/pengaturan-hpp', pengaturanHppRoutes);
 
 // Centralized error handler — any unhandled throw in a route lands here
 // instead of crashing the process or leaking a stack trace to the client.

@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { prisma } from '../db/prisma';
 import { getHargaAcuanMaterial } from '../lib/hargaAcuanClient';
+import { cariPengaturan, hitungBiaya, muatKonteks } from '../lib/pengaturanHpp';
 
 // Versi server dari updateSemuaHarga() di app.js (tombol "Update Harga" manual)
 // -- dipakai oleh scheduler (server.ts) untuk refresh HPP otomatis tanpa staff
@@ -21,6 +22,9 @@ interface HasilRefresh {
 
 export async function refreshSemuaHarga(): Promise<HasilRefresh> {
   const { rows: acuanRows, available: acuanTersedia } = await getHargaAcuanMaterial();
+  // Margin, overhead, dan biaya operasional kini dari pengaturan per
+  // cabang/kategori, bukan dari kolom di tiap produk (lihat lib/pengaturanHpp.ts).
+  const konteksPengaturan = await muatKonteks();
 
   if (!acuanTersedia) {
     // Koneksi ke data harga Cashflow lagi bermasalah (bukan sekadar cache
@@ -149,14 +153,10 @@ export async function refreshSemuaHarga(): Promise<HasilRefresh> {
       material += (found.harga / found.konvIsi) * Number(r.qtyPakai || 0);
     }
 
-    const opexRows = await prisma.biayaOperasionalProduk.findMany({ where: { produkId: p.id } });
-    let opex = 0;
-    for (const o of opexRows) {
-      opex += o.mode === 'persen' ? (Number(o.value) / 100) * material : Number(o.value);
-    }
-
-    const overheadPersen = Number(p.overheadPersen) || 15;
-    const marginPersen = Number(p.targetMarginPersen) || 60;
+    const atur = cariPengaturan(konteksPengaturan, p.cabangHppId, p.kategoriId);
+    const opex = hitungBiaya(material, atur.biaya);
+    const overheadPersen = atur.overheadPersen;
+    const marginPersen = atur.marginPersen;
     const overhead = (overheadPersen / 100) * (material + opex);
     const final = material + opex + overhead;
     const hargaJual = marginPersen < 100 ? final / (1 - marginPersen / 100) : final;
@@ -164,6 +164,13 @@ export async function refreshSemuaHarga(): Promise<HasilRefresh> {
     const hppBaru = Math.round(final);
     const hargaBaru = Math.round(hargaJual);
     const hppLama = Math.round(Number(p.hppTerakhir) || 0);
+
+    // Kolom overheadPersen/targetMarginPersen di produk kini CERMINAN dari
+    // pengaturan yang berlaku, bukan sumber kebenaran -- supaya kolom di tabel
+    // produk, dashboard, dan riwayat tetap menampilkan angka yang dipakai.
+    if (Number(p.overheadPersen) !== overheadPersen || Number(p.targetMarginPersen) !== marginPersen) {
+      await prisma.produk.update({ where: { id: p.id }, data: { overheadPersen, targetMarginPersen: marginPersen } });
+    }
 
     if (hppBaru !== hppLama) {
       await prisma.produk.update({
@@ -188,4 +195,32 @@ export async function refreshSemuaHarga(): Promise<HasilRefresh> {
   }
 
   return { produkBerubah, produkDilewati, kondimenBerubah, kondimenDilewati, acuanTersedia: true };
+}
+
+
+// Dipakai sesudah pengaturan HPP diubah dari aplikasi: segarkan kolom
+// margin/overhead SEMUA produk (termasuk yang resepnya belum lengkap, supaya
+// tabel tidak menampilkan kebijakan lama), lalu hitung ulang HPP-nya.
+export async function terapkanPengaturan(oleh: string) {
+  const konteks = await muatKonteks();
+  const produkList = await prisma.produk.findMany({ where: { isDeleted: false }, select: { id: true, cabangHppId: true, kategoriId: true, overheadPersen: true, targetMarginPersen: true } });
+  let kebijakanBerubah = 0;
+  for (const p of produkList) {
+    const atur = cariPengaturan(konteks, p.cabangHppId, p.kategoriId);
+    if (Number(p.overheadPersen) === atur.overheadPersen && Number(p.targetMarginPersen) === atur.marginPersen) continue;
+    await prisma.produk.update({ where: { id: p.id }, data: { overheadPersen: atur.overheadPersen, targetMarginPersen: atur.marginPersen } });
+    kebijakanBerubah++;
+  }
+  const hasil = await refreshSemuaHarga();
+  await prisma.produkLog.create({
+    data: {
+      id: crypto.randomUUID(),
+      produkId: produkList[0] ? produkList[0].id : '-',
+      produkNama: '(pengaturan HPP)',
+      aksi: 'ubah-pengaturan',
+      detail: `Pengaturan biaya & margin diubah. ${kebijakanBerubah} produk ikut berubah kebijakannya, ${hasil.produkBerubah} HPP-nya dihitung ulang.`,
+      oleh
+    }
+  }).catch(() => { /* log gagal tidak boleh menggagalkan penyimpanan pengaturan */ });
+  return { kebijakanBerubah, ...hasil };
 }
