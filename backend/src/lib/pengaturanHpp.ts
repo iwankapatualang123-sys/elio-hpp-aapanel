@@ -26,19 +26,21 @@ export interface BarisPengaturan {
   kategoriId: string | null;
   marginPersen: number;
   overheadPersen: number;
+  overheadAktif: boolean;
   biaya: BiayaItem[];
 }
 
 export interface HasilCari {
   marginPersen: number;
   overheadPersen: number;
+  overheadAktif: boolean;
   biaya: BiayaItem[];
   dariId: string | null; // baris pengaturan yang dipakai (null = bawaan kode)
 }
 
 // Dipakai kalau tabel pengaturan masih kosong -- sama dengan @default lama di
 // kolom produk, supaya aplikasi yang belum sempat diisi tetap berhitung wajar.
-export const BAWAAN: HasilCari = { marginPersen: 60, overheadPersen: 15, biaya: [], dariId: null };
+export const BAWAAN: HasilCari = { marginPersen: 60, overheadPersen: 15, overheadAktif: true, biaya: [], dariId: null };
 
 export interface Konteks {
   baris: BarisPengaturan[];
@@ -57,6 +59,7 @@ export async function muatKonteks(): Promise<Konteks> {
       kategoriId: r.kategoriId,
       marginPersen: Number(r.marginPersen),
       overheadPersen: Number(r.overheadPersen),
+      overheadAktif: r.overheadAktif,
       biaya: r.biaya.map((b) => ({ label: b.label, mode: b.mode, value: Number(b.value), aktif: b.aktif }))
     })),
     indukKategori: new Map(kategori.map((k) => [k.id, k.parentId]))
@@ -65,7 +68,7 @@ export async function muatKonteks(): Promise<Konteks> {
 
 function ambil(k: Konteks, cabangId: string | null, kategoriId: string | null): HasilCari | null {
   const r = k.baris.find((x) => x.cabangHppId === cabangId && x.kategoriId === kategoriId);
-  return r ? { marginPersen: r.marginPersen, overheadPersen: r.overheadPersen, biaya: r.biaya, dariId: r.id } : null;
+  return r ? { marginPersen: r.marginPersen, overheadPersen: r.overheadPersen, overheadAktif: r.overheadAktif, biaya: r.biaya, dariId: r.id } : null;
 }
 
 export function cariPengaturan(k: Konteks, cabangId: string | null, kategoriId: string | null): HasilCari {
@@ -88,9 +91,14 @@ export function cariPengaturan(k: Konteks, cabangId: string | null, kategoriId: 
   return ambil(k, null, null) || BAWAAN;
 }
 
-// Total biaya operasional yang IKUT dihitung. Jenis yang saklarnya mati
-// dilewati -- datanya tetap tersimpan, cuma tidak menambah HPP, supaya user
-// bisa melihat COGS murni bahan lalu menyalakannya lagi tanpa mengetik ulang.
+// Saklar mati = tidak ikut dihitung ke HPP, tapi angkanya tetap tersimpan,
+// supaya user bisa melihat COGS murni bahan lalu menyalakannya lagi tanpa
+// mengetik ulang. Berlaku untuk overhead maupun tiap jenis biaya di bawah.
+export function hitungOverhead(dasar: number, atur: { overheadPersen: number; overheadAktif: boolean }): number {
+  return atur.overheadAktif ? (atur.overheadPersen / 100) * dasar : 0;
+}
+
+// Total biaya operasional yang IKUT dihitung (jenis yang saklarnya mati dilewati).
 export function hitungBiaya(material: number, biaya: BiayaItem[]): number {
   return biaya.reduce((t, b) => {
     if (!b.aktif) return t;

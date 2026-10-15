@@ -180,7 +180,7 @@ async function loadKategori(){
 // backend — kalau berbeda, angka di layar tidak sama dengan yang dihitung
 // server tiap jam 03:00.
 let pengaturanList = [];
-const PENGATURAN_BAWAAN = { id: null, cabang_id: null, kategori_id: null, margin: 60, overhead: 15, biaya: [] };
+const PENGATURAN_BAWAAN = { id: null, cabang_id: null, kategori_id: null, margin: 60, overhead: 15, overhead_aktif: true, biaya: [] };
 
 async function apiHpp(path, opts){
   let token = "";
@@ -203,6 +203,7 @@ async function loadPengaturan(){
       kategori_id: x.kategoriId || null,
       margin: Number(x.marginPersen),
       overhead: Number(x.overheadPersen),
+      overhead_aktif: x.overheadAktif !== false,
       biaya: (x.biaya || []).map(b => ({ label: b.label, mode: b.mode, value: Number(b.value), aktif: !!b.aktif })),
     }));
   } catch (e) {
@@ -977,7 +978,7 @@ function prodRowHtml(p, showKat){
     <td class="r">${selisihHtml}</td>
     <td class="r"><span class="num-val">${marginRekom == null ? "—" : marginRekom + "%"}</span></td>
     <td class="r"><span class="atur-sel">${esc(ringkasBiaya(aturProduk.biaya))}</span></td>
-    <td class="r"><span class="num-val">${aturProduk.overhead}%</span></td>
+    <td class="r">${aturProduk.overhead_aktif ? `<span class="num-val">${aturProduk.overhead}%</span>` : `<span class="atur-sel">mati (${aturProduk.overhead}%)</span>`}</td>
     <td class="r"><span class="num-val">${marginAktual == null ? "—" : marginAktual + "%"}</span></td>
     <td class="r"><span class="num-val">${markup == null ? "—" : markup + "%"}</span></td>
     <td><div class="ct-tgl">${belum ? "—" : updateTgl}</div></td>
@@ -1467,7 +1468,7 @@ async function updateSemuaHarga(){
     const opex = hitungBiayaOps(material, atur.biaya);
     const overheadPersen = atur.overhead;
     const marginPersen = atur.margin;
-    const overhead = (overheadPersen / 100) * (material + opex);
+    const overhead = atur.overhead_aktif ? (overheadPersen / 100) * (material + opex) : 0;
     const final = material + opex + overhead;
     const hargaJual = marginPersen < 100 ? final / (1 - marginPersen / 100) : final;
 
@@ -2236,7 +2237,7 @@ function renderPengaturanInfo(){
   if (el){
     el.innerHTML = `
       <div class="atur-baris"><span>Mengikuti pengaturan <b>${esc(namaPengaturan(atur))}</b></span><button class="btn btn-sm" id="f-atur-buka">Atur</button></div>
-      <div class="atur-rinci">Biaya operasional: ${esc(ringkasBiaya(atur.biaya))} &middot; Overhead ${atur.overhead}% &middot; Margin ${atur.margin}%</div>
+      <div class="atur-rinci">Biaya operasional: ${esc(ringkasBiaya(atur.biaya))} &middot; Overhead ${atur.overhead_aktif ? atur.overhead + "%" : "dimatikan"} &middot; Margin ${atur.margin}%</div>
       <div class="atur-nota">Berlaku untuk semua produk di kelompok ini, bukan cuma produk ini.</div>`;
     const b = $("#f-atur-buka"); if (b) b.addEventListener("click", bukaPengaturanModal);
   }
@@ -2254,7 +2255,7 @@ function recalc(){
   formOpex = atur.biaya.filter(b => b.aktif).map(b => ({ label: b.label, mode: b.mode, value: b.value }));
   renderPengaturanInfo();
   const opex = hitungBiayaOps(material, atur.biaya);
-  const overhead = (atur.overhead / 100) * (material + opex);
+  const overhead = atur.overhead_aktif ? (atur.overhead / 100) * (material + opex) : 0;
   const final = material + opex + overhead;
   const harga = atur.margin < 100 ? final / (1 - atur.margin / 100) : final;
   $("#s-material") && ($("#s-material").textContent = rp(material));
@@ -3087,7 +3088,7 @@ function bukaPengaturanModal(){
   // Salinan kerja: perubahan baru berlaku setelah Simpan ditekan.
   draftPengaturan = pengaturanList.map(x => ({ ...x, biaya: x.biaya.map(b => ({ ...b })) }));
   if (!draftPengaturan.some(x => !x.cabang_id && !x.kategori_id)){
-    draftPengaturan.unshift({ id: null, cabang_id: null, kategori_id: null, margin: 60, overhead: 15, biaya: [] });
+    draftPengaturan.unshift({ id: null, cabang_id: null, kategori_id: null, margin: 60, overhead: 15, overhead_aktif: true, biaya: [] });
   }
   let modal = $("#pengaturanModal");
   if (!modal){
@@ -3142,7 +3143,7 @@ function renderPengaturanModal(){
         </div>
         <div class="pg-angka">
           <label>Margin rekomendasi<div class="pg-in"><input type="number" data-pg-margin value="${b.margin}" min="0" max="99" step="1"><span>%</span></div></label>
-          <label>Overhead<div class="pg-in"><input type="number" data-pg-overhead value="${b.overhead}" min="0" max="200" step="1"><span>%</span></div></label>
+          <label><span class="pg-label-saklar"><input type="checkbox" data-pg-overhead-aktif ${b.overhead_aktif ? "checked" : ""}> Overhead</span><div class="pg-in"><input type="number" data-pg-overhead value="${b.overhead}" min="0" max="200" step="1" ${b.overhead_aktif ? "" : "disabled"}><span>%</span></div></label>
         </div>
         <div class="pg-biaya-judul">Biaya operasional lain <small>centang = ikut dihitung ke HPP</small></div>
         ${biaya || '<div class="pg-kosong">Belum ada. Tanpa ini, HPP = biaya bahan + overhead saja.</div>'}
@@ -3162,6 +3163,7 @@ function renderPengaturanModal(){
   // Isian teks/angka: tulis ke draft tanpa render ulang, supaya fokus ketikan
   // tidak lompat (pola yang sama dipakai di editor kondimen).
   $all("[data-pg-margin]", body).forEach(el => el.addEventListener("input", e => { draftPengaturan[+e.target.closest(".pg-kartu").dataset.i].margin = parseFloat(e.target.value) || 0; }));
+  $all("[data-pg-overhead-aktif]", body).forEach(el => el.addEventListener("change", e => { draftPengaturan[+e.target.closest(".pg-kartu").dataset.i].overhead_aktif = e.target.checked; renderPengaturanModal(); }));
   $all("[data-pg-overhead]", body).forEach(el => el.addEventListener("input", e => { draftPengaturan[+e.target.closest(".pg-kartu").dataset.i].overhead = parseFloat(e.target.value) || 0; }));
   $all("[data-biaya-label]", body).forEach(el => el.addEventListener("input", e => { const r = e.target.closest(".pg-biaya"); draftPengaturan[+r.dataset.i].biaya[+r.dataset.j].label = e.target.value; }));
   $all("[data-biaya-value]", body).forEach(el => el.addEventListener("input", e => { const r = e.target.closest(".pg-biaya"); draftPengaturan[+r.dataset.i].biaya[+r.dataset.j].value = parseFloat(e.target.value) || 0; }));
@@ -3181,7 +3183,7 @@ function renderPengaturanModal(){
   $all("[data-pg-hapus]", body).forEach(el => el.addEventListener("click", e => { draftPengaturan.splice(+e.target.closest(".pg-kartu").dataset.i, 1); renderPengaturanModal(); }));
   $("#pgTambah").addEventListener("click", () => {
     const umum = draftPengaturan.find(x => !x.cabang_id && !x.kategori_id);
-    draftPengaturan.push({ id: null, cabang_id: cabangList[0] ? cabangList[0].id : null, kategori_id: null, margin: umum ? umum.margin : 60, overhead: umum ? umum.overhead : 15, biaya: [] });
+    draftPengaturan.push({ id: null, cabang_id: cabangList[0] ? cabangList[0].id : null, kategori_id: null, margin: umum ? umum.margin : 60, overhead: umum ? umum.overhead : 15, overhead_aktif: umum ? umum.overhead_aktif !== false : true, biaya: [] });
     renderPengaturanModal();
   });
   $("#pgSimpan").addEventListener("click", simpanPengaturan);
@@ -3199,7 +3201,7 @@ async function simpanPengaturan(){
       method: "POST",
       body: JSON.stringify({ baris: draftPengaturan.map(b => ({
         cabangHppId: b.cabang_id, kategoriId: b.kategori_id,
-        marginPersen: b.margin, overheadPersen: b.overhead,
+        marginPersen: b.margin, overheadPersen: b.overhead, overheadAktif: b.overhead_aktif !== false,
         biaya: b.biaya.filter(x => x.label.trim()).map(x => ({ label: x.label.trim(), mode: x.mode, value: x.value, aktif: x.aktif })),
       })) }),
     });

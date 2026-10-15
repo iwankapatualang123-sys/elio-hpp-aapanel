@@ -28,6 +28,7 @@ const barisSchema = z.object({
   kategoriId: z.string().nullable(),
   marginPersen: z.number().min(0).max(99.9),
   overheadPersen: z.number().min(0).max(1000),
+  overheadAktif: z.boolean(),
   biaya: z.array(biayaSchema)
 });
 const simpanSchema = z.object({ baris: z.array(barisSchema) });
@@ -60,6 +61,7 @@ router.post('/', async (req, res) => {
           kategoriId: b.kategoriId,
           marginPersen: b.marginPersen,
           overheadPersen: b.overheadPersen,
+          overheadAktif: b.overheadAktif,
           biaya: {
             create: b.biaya
               .filter((x) => x.label.trim())

@@ -241,6 +241,10 @@ model PengaturanHpp {
   kategoriId     String?  @map("kategori_id")
   marginPersen   Decimal  @default(60) @map("margin_persen") @db.Decimal(6, 2)
   overheadPersen Decimal  @default(15) @map("overhead_persen") @db.Decimal(6, 2)
+  // Sama seperti saklar di tiap jenis biaya: mati = overhead tidak ikut
+  // dihitung ke HPP, tapi persentasenya tetap tersimpan. Semua saklar mati
+  // berarti HPP = biaya bahan murni (COGS real).
+  overheadAktif  Boolean  @default(true) @map("overhead_aktif")
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @default(now()) @updatedAt @map("updated_at")
 

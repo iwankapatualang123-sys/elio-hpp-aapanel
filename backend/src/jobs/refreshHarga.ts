@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import { prisma } from '../db/prisma';
 import { getHargaAcuanMaterial } from '../lib/hargaAcuanClient';
-import { cariPengaturan, hitungBiaya, muatKonteks } from '../lib/pengaturanHpp';
+import { cariPengaturan, hitungBiaya, hitungOverhead, muatKonteks } from '../lib/pengaturanHpp';
 
 // Versi server dari updateSemuaHarga() di app.js (tombol "Update Harga" manual)
 // -- dipakai oleh scheduler (server.ts) untuk refresh HPP otomatis tanpa staff
@@ -157,7 +157,7 @@ export async function refreshSemuaHarga(): Promise<HasilRefresh> {
     const opex = hitungBiaya(material, atur.biaya);
     const overheadPersen = atur.overheadPersen;
     const marginPersen = atur.marginPersen;
-    const overhead = (overheadPersen / 100) * (material + opex);
+    const overhead = hitungOverhead(material + opex, atur);
     const final = material + opex + overhead;
     const hargaJual = marginPersen < 100 ? final / (1 - marginPersen / 100) : final;
 
