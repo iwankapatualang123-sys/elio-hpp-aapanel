@@ -666,7 +666,7 @@ const SORT_OPTS = [
   ["hpp-asc", "HPP terendah"],
   ["margin-desc", "Margin aktual tertinggi"],
   ["margin-asc", "Margin aktual terendah"],
-  ["markup-desc", "Markup tertinggi"],
+  ["markup-desc", "% HPP tertinggi"],
   ["selisih-asc", "Selisih terjauh dari rekom"],
   ["update-desc", "Update terbaru"],
 ];
@@ -897,7 +897,8 @@ function produkMetrik(p){
   const hargaEfektif = (p.harga_jual_aktual !== null && p.harga_jual_aktual !== undefined) ? Number(p.harga_jual_aktual) : rekom;
   const selisih = Math.round(hargaEfektif - rekom);
   const marginAktual = hargaEfektif > 0 ? (hargaEfektif - hpp) / hargaEfektif * 100 : null;
-  const markup = hpp > 0 ? (hargaEfektif - hpp) / hpp * 100 : null;
+  // Lihat catatan di prodRowHtml: kini porsi HPP di dalam harga jual.
+  const markup = hargaEfektif > 0 && hpp > 0 ? hpp / hargaEfektif * 100 : null;
   return { belum, rekom, hpp, hargaEfektif, selisih, marginAktual, markup };
 }
 function urutkanProduk(arr){
@@ -979,7 +980,10 @@ function prodRowHtml(p, showKat){
   const hppNum = Number(p.hpp_terakhir) || 0;
   const marginRekom = rekom > 0 ? Math.round((rekom - hppNum) / rekom * 100) : null;
   const marginAktual = hargaEfektif > 0 ? Math.round((hargaEfektif - hppNum) / hargaEfektif * 100) : null;
-  const markup = hppNum > 0 ? Math.round((hargaEfektif - hppNum) / hppNum * 100) : null;
+  // Dulu markup basis modal ((jual-HPP)/HPP). Diganti atas permintaan user jadi
+  // porsi HPP di dalam harga jual — cara baca yang lazim di F&B (food cost %).
+  // Catatan: angka ini selalu 100% dikurangi margin aktual.
+  const hppPersen = hargaEfektif > 0 && hppNum > 0 ? Math.round(hppNum / hargaEfektif * 100) : null;
   const updateTgl = infoTanggal(p.updated_at).teks;
   // Kebijakan yang berlaku untuk produk ini (dari pengaturan cabang/kategori).
   const aturProduk = cariPengaturan(p.cabang_hpp_id || null, p.kategori_id || null);
@@ -1000,7 +1004,7 @@ function prodRowHtml(p, showKat){
     <td class="r" title="${esc(ringkasBiaya(aturProduk.biaya))}"><span class="num-val">${biayaOps == null ? "—" : rp(biayaOps)}</span></td>
     <td class="r">${aturProduk.overhead_aktif ? `<span class="num-val">${aturProduk.overhead}%</span>` : `<span class="atur-sel">mati (${aturProduk.overhead}%)</span>`}</td>
     <td class="r"><span class="num-val">${marginAktual == null ? "—" : marginAktual + "%"}</span></td>
-    <td class="r"><span class="num-val">${markup == null ? "—" : markup + "%"}</span></td>
+    <td class="r"><span class="num-val">${hppPersen == null ? "—" : hppPersen + "%"}</span></td>
     <td><div class="ct-tgl">${belum ? "—" : updateTgl}</div></td>
     <td class="r">
       <button class="prod-dup" data-dup="${esc(p.id)}" title="Duplikat produk"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg></button>
@@ -1012,23 +1016,13 @@ function prodRowHtml(p, showKat){
 // produk, jadi pengaturannya dibuka dari judul kolomnya sendiri.
 const TOMBOL_INFO_BIAYA = '<button class="th-atur" data-info-biaya="1" title="Apa saja isi biaya ops"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/></svg></button>';
 
-// Keterangan singkat di bawah judul kolom. Kalau semua pengaturan memakai
-// komponen yang sama, sebut komponennya; kalau berbeda-beda, jangan mengaku
-// satu angka mewakili semuanya — arahkan ke tombol (i).
-function ringkasKomponenUmum(){
-  const set = new Set(pengaturanList.map(x => ringkasBiaya(x.biaya)));
-  if (!pengaturanList.length) return "";
-  if (set.size === 1) { const satu = [...set][0]; return satu === "—" ? "tidak ada" : satu; }
-  return "beragam per cabang/kategori";
-}
-
 const GERIGI_ATUR = '<button class="th-atur" data-atur-hpp="1" title="Atur untuk semua produk"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg></button>';
 
 function prodCardHtml(title, count, rows, katKey){
   return `<div class="prod-card"${katKey ? ` data-kat="${esc(katKey)}"` : ""}>
     <div class="prod-card-head"><span>${esc(title)}</span><span class="cnt">${count}</span></div>
     <div class="prod-table-wrap"><table class="prod-table">
-      <thead><tr><th>Produk</th><th>Status</th><th>Cabang &amp; tanggal</th><th class="r">HPP</th><th class="r">Harga rekomendasi</th><th class="r">Harga jual</th><th class="r">Selisih</th><th class="r">Margin rekom ${GERIGI_ATUR}</th><th class="r">Biaya ops ${TOMBOL_INFO_BIAYA}${GERIGI_ATUR}<div class="th-sub">${esc(ringkasKomponenUmum())}</div></th><th class="r">Overhead ${GERIGI_ATUR}</th><th class="r">Margin aktual</th><th class="r" title="Harga jual di atas HPP (basis modal)">Markup</th><th>Update terakhir</th><th></th></tr></thead>
+      <thead><tr><th>Produk</th><th>Status</th><th>Cabang &amp; tanggal</th><th class="r">HPP</th><th class="r">Harga rekomendasi</th><th class="r">Harga jual</th><th class="r">Selisih</th><th class="r"><span class="th-isi">Margin rekom${GERIGI_ATUR}</span></th><th class="r"><span class="th-isi">Biaya ops${TOMBOL_INFO_BIAYA}${GERIGI_ATUR}</span></th><th class="r"><span class="th-isi">Overhead${GERIGI_ATUR}</span></th><th class="r">Margin aktual</th><th class="r" title="Porsi HPP di dalam harga jual — 100% dikurangi margin aktual">% HPP</th><th>Update terakhir</th><th></th></tr></thead>
       <tbody>${rows}</tbody>
     </table></div>
   </div>`;
