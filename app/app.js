@@ -233,6 +233,25 @@ function cariPengaturan(cabangId, kategoriId){
   return ambil(null, null) || PENGATURAN_BAWAAN;
 }
 
+// Nilai rupiah biaya operasional untuk SATU produk, diturunkan balik dari HPP
+// yang tersimpan. Rumus majunya: HPP = (material + biaya) x (1 + overhead),
+// dengan biaya = material x persen + nominal. Dibalik:
+//   material = (HPP / (1 + overhead) - nominal) / (1 + persen)
+// Dipakai supaya kolom "Biaya ops" bisa menampilkan rupiah tanpa perlu
+// menyimpan kolom baru di database atau menghitung ulang seluruh resep.
+function biayaOpsRupiah(p, atur){
+  const hpp = Number(p.hpp_terakhir) || 0;
+  if (!hpp) return null; // produk belum punya HPP — tidak ada yang bisa diuraikan
+  const aktif = (atur.biaya || []).filter(b => b.aktif);
+  if (!aktif.length) return 0;
+  const persen = aktif.filter(b => b.mode === "persen").reduce((t, b) => t + b.value / 100, 0);
+  const nominal = aktif.filter(b => b.mode !== "persen").reduce((t, b) => t + b.value, 0);
+  const oh = atur.overhead_aktif ? atur.overhead / 100 : 0;
+  const material = (hpp / (1 + oh) - nominal) / (1 + persen);
+  if (!(material > 0)) return null;
+  return material * persen + nominal;
+}
+
 // Jenis biaya yang saklarnya mati tidak ikut dihitung — datanya tetap ada.
 function hitungBiayaOps(material, biaya){
   return (biaya || []).reduce((t, b) => b.aktif ? t + (b.mode === "persen" ? (b.value / 100) * material : b.value) : t, 0);
@@ -964,6 +983,7 @@ function prodRowHtml(p, showKat){
   const updateTgl = infoTanggal(p.updated_at).teks;
   // Kebijakan yang berlaku untuk produk ini (dari pengaturan cabang/kategori).
   const aturProduk = cariPengaturan(p.cabang_hpp_id || null, p.kategori_id || null);
+  const biayaOps = biayaOpsRupiah(p, aturProduk);
   const katLabel = showKat ? `<div class="ct-tgl">${esc(p.kategori_id ? katPathNoRoot(p.kategori_id) : "Tanpa kategori")}</div>` : "";
   return `<tr class="prod-row ${belum ? "belum" : ""} ${edge}" data-id="${esc(p.id)}">
     <td><span class="pnm">${esc(p.nama)}</span>${usang}${takHitung}${katLabel}</td>
@@ -977,7 +997,7 @@ function prodRowHtml(p, showKat){
     <td class="r"><span class="num-val hl">${belum ? "—" : rp(hargaEfektif)}</span></td>
     <td class="r">${selisihHtml}</td>
     <td class="r"><span class="num-val">${marginRekom == null ? "—" : marginRekom + "%"}</span></td>
-    <td class="r"><span class="atur-sel">${esc(ringkasBiaya(aturProduk.biaya))}</span></td>
+    <td class="r" title="${esc(ringkasBiaya(aturProduk.biaya))}"><span class="num-val">${biayaOps == null ? "—" : rp(biayaOps)}</span></td>
     <td class="r">${aturProduk.overhead_aktif ? `<span class="num-val">${aturProduk.overhead}%</span>` : `<span class="atur-sel">mati (${aturProduk.overhead}%)</span>`}</td>
     <td class="r"><span class="num-val">${marginAktual == null ? "—" : marginAktual + "%"}</span></td>
     <td class="r"><span class="num-val">${markup == null ? "—" : markup + "%"}</span></td>
@@ -990,13 +1010,25 @@ function prodRowHtml(p, showKat){
 }
 // Gerigi di judul kolom: margin, biaya ops & overhead bukan lagi isian per
 // produk, jadi pengaturannya dibuka dari judul kolomnya sendiri.
+const TOMBOL_INFO_BIAYA = '<button class="th-atur" data-info-biaya="1" title="Apa saja isi biaya ops"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/></svg></button>';
+
+// Keterangan singkat di bawah judul kolom. Kalau semua pengaturan memakai
+// komponen yang sama, sebut komponennya; kalau berbeda-beda, jangan mengaku
+// satu angka mewakili semuanya — arahkan ke tombol (i).
+function ringkasKomponenUmum(){
+  const set = new Set(pengaturanList.map(x => ringkasBiaya(x.biaya)));
+  if (!pengaturanList.length) return "";
+  if (set.size === 1) { const satu = [...set][0]; return satu === "—" ? "tidak ada" : satu; }
+  return "beragam per cabang/kategori";
+}
+
 const GERIGI_ATUR = '<button class="th-atur" data-atur-hpp="1" title="Atur untuk semua produk"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg></button>';
 
 function prodCardHtml(title, count, rows, katKey){
   return `<div class="prod-card"${katKey ? ` data-kat="${esc(katKey)}"` : ""}>
     <div class="prod-card-head"><span>${esc(title)}</span><span class="cnt">${count}</span></div>
     <div class="prod-table-wrap"><table class="prod-table">
-      <thead><tr><th>Produk</th><th>Status</th><th>Cabang &amp; tanggal</th><th class="r">HPP</th><th class="r">Harga rekomendasi</th><th class="r">Harga jual</th><th class="r">Selisih</th><th class="r">Margin rekom ${GERIGI_ATUR}</th><th class="r">Biaya ops ${GERIGI_ATUR}</th><th class="r">Overhead ${GERIGI_ATUR}</th><th class="r">Margin aktual</th><th class="r" title="Harga jual di atas HPP (basis modal)">Markup</th><th>Update terakhir</th><th></th></tr></thead>
+      <thead><tr><th>Produk</th><th>Status</th><th>Cabang &amp; tanggal</th><th class="r">HPP</th><th class="r">Harga rekomendasi</th><th class="r">Harga jual</th><th class="r">Selisih</th><th class="r">Margin rekom ${GERIGI_ATUR}</th><th class="r">Biaya ops ${TOMBOL_INFO_BIAYA}${GERIGI_ATUR}<div class="th-sub">${esc(ringkasKomponenUmum())}</div></th><th class="r">Overhead ${GERIGI_ATUR}</th><th class="r">Margin aktual</th><th class="r" title="Harga jual di atas HPP (basis modal)">Markup</th><th>Update terakhir</th><th></th></tr></thead>
       <tbody>${rows}</tbody>
     </table></div>
   </div>`;
@@ -1119,6 +1151,7 @@ function renderProdukList(){
     if (e.target.closest(".prod-dup")) return;
     openEdit(it.dataset.id);
   }));
+  $all("[data-info-biaya]", el).forEach(b => b.addEventListener("click", (e) => { e.stopPropagation(); bukaInfoBiaya(); }));
   $all("[data-atur-hpp]", el).forEach(b => b.addEventListener("click", (e) => { e.stopPropagation(); bukaPengaturanModal(); }));
   $all("[data-dup]", el).forEach(b => b.addEventListener("click", (e) => { e.stopPropagation(); duplikatProduk(b.dataset.dup); }));
   $all("[data-log]", el).forEach(b => b.addEventListener("click", (e) => { e.stopPropagation(); bukaLogHppProduk(b.dataset.log); }));
@@ -3083,6 +3116,40 @@ async function renderKelolaCadangan(){
 //  PANEL PENGATURAN HPP (dibuka dari gerigi di judul kolom tabel Produk)
 // ---------------------------------------------------------------------
 let draftPengaturan = null;
+
+// Penjelasan isi "Biaya ops" per kelompok — dibuka dari tombol (i) di judul
+// kolom, supaya kolomnya sendiri cukup menampilkan angka rupiah.
+function bukaInfoBiaya(){
+  let modal = $("#infoBiayaModal");
+  if (!modal){
+    modal = document.createElement("div");
+    modal.id = "infoBiayaModal";
+    modal.className = "dash-modal hidden";
+    modal.innerHTML = `<div class="dm-backdrop"></div>
+      <div class="dm-panel" style="max-width:520px;">
+        <div class="dm-head"><h3>Isi biaya ops</h3><button class="icon-btn" id="ibClose" aria-label="Tutup"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
+        <div class="dm-body" id="ibBody"></div>
+      </div>`;
+    document.body.appendChild(modal);
+    modal.querySelector(".dm-backdrop").addEventListener("click", () => modal.classList.add("hidden"));
+    modal.querySelector("#ibClose").addEventListener("click", () => modal.classList.add("hidden"));
+  }
+  const baris = pengaturanList.map(x => {
+    const mati = (x.biaya || []).filter(b => !b.aktif);
+    const aktif = (x.biaya || []).filter(b => b.aktif);
+    return `<div class="ib-baris">
+      <div class="ib-nama">${esc(namaPengaturan(x))}</div>
+      <div class="ib-isi">${aktif.length ? aktif.map(b => `<span class="chip-biaya">${esc(b.label)} ${b.mode === "persen" ? b.value + "%" : rp(b.value)}</span>`).join("") : '<span class="ib-kosong">tidak ada biaya ops</span>'}</div>
+      <div class="ib-oh">Overhead ${x.overhead_aktif ? x.overhead + "%" : "dimatikan"} &middot; Margin ${x.margin}%${mati.length ? ` &middot; ${mati.length} jenis biaya dimatikan` : ""}</div>
+    </div>`;
+  }).join("");
+  $("#ibBody").innerHTML = `
+    <p class="ib-intro">Kolom <b>Biaya ops</b> menampilkan nilai rupiahnya untuk tiap produk. Isinya ditentukan per cabang/kategori:</p>
+    ${baris || '<div class="ib-kosong">Belum ada pengaturan.</div>'}
+    <p class="ib-nota">Persentase dihitung dari biaya bahan produk itu, jadi rupiahnya berbeda-beda tiap produk.</p>`;
+  modal.classList.remove("hidden");
+  requestAnimationFrame(() => modal.classList.add("show"));
+}
 
 function bukaPengaturanModal(){
   // Salinan kerja: perubahan baru berlaku setelah Simpan ditekan.
