@@ -233,6 +233,18 @@ function cariPengaturan(cabangId, kategoriId){
   return ambil(null, null) || PENGATURAN_BAWAAN;
 }
 
+// Lencana asal bahan di baris resep: gudang Cashflow, belanja harian, kondimen,
+// atau isian manual. Dipakai supaya jelas harga sebuah bahan ikut pergerakan
+// belanja harian atau tidak.
+function lencanaSumberBahan(b){
+  const s = (b.sumber_acuan || b.sumber || "").toLowerCase();
+  if (s === "kondimen") return '<span class="src src-kondimen">Kondimen</span>';
+  if (s === "manual") return '<span class="src src-manual">Manual</span>';
+  if (s.includes("gudang") || s.includes("warehouse")) return '<span class="src src-gudang">Gudang</span>';
+  if (s.includes("harian")) return '<span class="src src-harian">Harian</span>';
+  return "";
+}
+
 // Nilai rupiah biaya operasional untuk SATU produk, diturunkan balik dari HPP
 // yang tersimpan. Rumus majunya: HPP = (material + biaya) x (1 + overhead),
 // dengan biaya = material x persen + nominal. Dibalik:
@@ -1869,7 +1881,7 @@ function addBahanByNormal(nn, qty){
   const b = allBahan().find(x => x.nama_normal === nn);
   if (!b) return;
   if (formBahan.some(x => x.nama_normal === nn)){ toast("Bahan sudah ditambahkan"); return; }
-  formBahan.push({ nama: b.nama, nama_normal: b.nama_normal, harga: b.harga, sumber: b.sumber, tanggal: b.tanggal || null, konv: b.konv ? { ...b.konv } : null, qty: qty || 0, override: null, hargaBeliOverride: null });
+  formBahan.push({ nama: b.nama, nama_normal: b.nama_normal, harga: b.harga, sumber: b.sumber, sumber_acuan: b.sumber, tanggal: b.tanggal || null, konv: b.konv ? { ...b.konv } : null, qty: qty || 0, override: null, hargaBeliOverride: null });
   renderFormBahan(); recalc();
 }
 
@@ -2035,7 +2047,7 @@ function renderFormBahan(){
     const tglB = (b.override == null && b.hargaBeliOverride == null && b.tanggal) ? infoTanggal(b.tanggal) : null;
     const usangB = (tglB && tglB.lama) ? ` <span class="tanda-usang" title="Belanja terakhir ${tglB.hari} hari lalu (${esc(tglB.teks)}) — harga mungkin sudah berubah"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>` : "";
     return `<tr class="bahan-row" data-i="${i}">
-      <td><span class="pnm">${esc(b.nama)}</span>${janggal ? ' <span class="tanda-usang" title="Harga per unit janggal — cek isi per kemasan lewat tombol edit"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h16.9a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg></span>' : ''}${usangB}</td>
+      <td><span class="pnm">${esc(b.nama)}</span> ${lencanaSumberBahan(b)}${janggal ? ' <span class="tanda-usang" title="Harga per unit janggal — cek isi per kemasan lewat tombol edit"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h16.9a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg></span>' : ''}${usangB}</td>
       <td class="r"><span class="num-val">${b.qty || 0} ${esc(unit)}</span></td>
       <td class="r"><span class="num-val">${price.toFixed(2)}</span></td>
       <td class="r"><span class="num-val hl">${rp(sub)}</span></td>
@@ -2400,6 +2412,10 @@ async function openEdit(id){
       // tercatat 35 hari lalu dan memang yang bikin produknya bertanda jam.
       tanggal: (found && found.tanggal) || null,
       sumber: r.sumber_bahan || (found ? found.sumber : "acuan"),
+      // resep_bahan cuma menyimpan 'acuan'/'manual'/'kondimen'. Asal
+      // sebenarnya (gudang Cashflow vs belanja harian) diambil dari katalog
+      // saat ini, supaya bisa ditandai di baris resep.
+      sumber_acuan: found ? found.sumber : null,
       konv: found && found.konv ? { ...found.konv } : (konversiMap[r.bahan_nama_normal] || null),
       qty: Number(r.qty_pakai) || 0,
       override: r.harga_override !== null && r.harga_override !== undefined ? Number(r.harga_override) : null,
