@@ -30,6 +30,14 @@ export interface HargaAcuanRow {
   hargaPerUnitBeli: number;
   sumber: string | null;
   tanggalTerakhir: string | null;
+  // Harga terbaru PER SUMBER, dari view harga_acuan_per_sumber. Dipakai untuk
+  // memperingatkan kalau gudang dan belanja harian berbeda jauh — pertanda
+  // kemasannya beda (gudang per karton, harian per botol), bukan harganya yang
+  // naik. Contoh nyata: "soda fanta" Rp 37.440 (gudang) vs Rp 3.042 (harian).
+  // null = view-nya belum ada atau bahan itu tidak punya catatan sumber tsb.
+  hargaGudang: number | null;
+  hargaHarian: number | null;
+  skuGudang: string | null;
 }
 
 const CACHE_TTL_MS = 45_000;
@@ -95,14 +103,38 @@ export async function getHargaAcuanMaterial(): Promise<{ rows: HargaAcuanRow[]; 
     // filter ini tetap aman dibiarkan (tidak ada nama bahan asli yang
     // sepanjang itu atau mengandung kata "invoice"/"cetak").
 
-    const rows: HargaAcuanRow[] = result.rows.map((r) => ({
-      namaKanonik: r.nama_kanonik,
-      namaAsli: r.nama_asli,
-      namaNormal: r.nama_normal,
-      hargaPerUnitBeli: Number(r.harga_per_unit_beli) || 0,
-      sumber: r.sumber,
-      tanggalTerakhir: r.tanggal_terakhir
-    }));
+    // Harga per sumber — query TERPISAH supaya harga yang dipakai menghitung
+    // tetap persis dari view lama (aturannya tidak berubah). Kalau view ini
+    // belum dibuat, bagian peringatan saja yang mati; perhitungan jalan terus.
+    const perSumber = new Map<string, { gudang: number | null; harian: number | null; sku: string | null }>();
+    try {
+      const ps = await p.query<{ nama_normal: string; sumber: string; harga_per_unit_beli: string | null; sku: string | null }>(
+        `SELECT nama_normal, sumber, harga_per_unit_beli, sku FROM harga_acuan_per_sumber`
+      );
+      for (const r of ps.rows) {
+        const cur = perSumber.get(r.nama_normal) || { gudang: null, harian: null, sku: null };
+        if (r.sumber === 'warehouse') { cur.gudang = Number(r.harga_per_unit_beli) || 0; cur.sku = r.sku; }
+        else cur.harian = Number(r.harga_per_unit_beli) || 0;
+        perSumber.set(r.nama_normal, cur);
+      }
+    } catch (err: any) {
+      console.warn('[hargaAcuanClient] harga_acuan_per_sumber tidak terbaca, peringatan beda kemasan dimatikan:', err.message);
+    }
+
+    const rows: HargaAcuanRow[] = result.rows.map((r) => {
+      const ps = perSumber.get(r.nama_normal);
+      return {
+        namaKanonik: r.nama_kanonik,
+        namaAsli: r.nama_asli,
+        namaNormal: r.nama_normal,
+        hargaPerUnitBeli: Number(r.harga_per_unit_beli) || 0,
+        sumber: r.sumber,
+        tanggalTerakhir: r.tanggal_terakhir,
+        hargaGudang: ps ? ps.gudang : null,
+        hargaHarian: ps ? ps.harian : null,
+        skuGudang: ps ? ps.sku : null
+      };
+    });
 
     cache = { rows, expiresAt: now + CACHE_TTL_MS };
     return { rows, available: true };

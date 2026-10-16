@@ -245,6 +245,12 @@ function lencanaSumberBahan(b){
   return "";
 }
 
+function tandaBedaKemasan(b){
+  const x = bedaKemasan(b);
+  if (!x) return "";
+  return ` <span class="tanda-usang" title="${esc(pesanBedaKemasan(x)).replace(/"/g, "&quot;")}">${IKON_BEDA_KEMASAN}</span>`;
+}
+
 // Nilai rupiah biaya operasional untuk SATU produk, diturunkan balik dari HPP
 // yang tersimpan. Rumus majunya: HPP = (material + biaya) x (1 + overhead),
 // dengan biaya = material x persen + nominal. Dibalik:
@@ -384,8 +390,29 @@ async function loadHargaAcuan(){
     harga: Number(r.harga_per_unit_beli) || 0,
     sumber: r.sumber,
     tanggal: r.tanggal_terakhir || null,
+    harga_gudang: r.harga_gudang == null ? null : Number(r.harga_gudang),
+    harga_harian: r.harga_harian == null ? null : Number(r.harga_harian),
+    sku_gudang: r.sku_gudang || null,
   }));
 }
+
+// Harga gudang dan belanja harian untuk bahan yang SAMA berbeda jauh -> hampir
+// pasti kemasannya yang beda, bukan harganya yang melonjak. Contoh nyata:
+// "soda fanta" Rp 37.440 di gudang (per karton) vs Rp 3.042 di belanja harian
+// (per botol). Kalau isi per kemasan di HPP masih disetel untuk botol
+// sementara harga yang terpakai harga karton, HPP melambung 12x.
+// Ambang 3x sengaja longgar: beda harga wajar antar sumber jarang sebesar itu.
+function bedaKemasan(b){
+  const g = b && b.harga_gudang, h = b && b.harga_harian;
+  if (!g || !h) return null;
+  const rasio = g > h ? g / h : h / g;
+  if (rasio < 3) return null;
+  return { gudang: g, harian: h, rasio, sku: b.sku_gudang || null };
+}
+function pesanBedaKemasan(x){
+  return `Harga gudang ${rp(x.gudang)} vs belanja harian ${rp(x.harian)} — beda ${Math.round(x.rasio)}x, kemungkinan beda kemasan (mis. karton vs botol). Cek isi per kemasan lewat tombol edit.`;
+}
+const IKON_BEDA_KEMASAN = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><path d="M3.3 7L12 12l8.7-5M12 22V12"/></svg>';
 async function loadKonversi(){
   const { data } = await sb.from("material_konversi").select("*");
   konversiMap = {};
@@ -1881,7 +1908,7 @@ function addBahanByNormal(nn, qty){
   const b = allBahan().find(x => x.nama_normal === nn);
   if (!b) return;
   if (formBahan.some(x => x.nama_normal === nn)){ toast("Bahan sudah ditambahkan"); return; }
-  formBahan.push({ nama: b.nama, nama_normal: b.nama_normal, harga: b.harga, sumber: b.sumber, sumber_acuan: b.sumber, tanggal: b.tanggal || null, konv: b.konv ? { ...b.konv } : null, qty: qty || 0, override: null, hargaBeliOverride: null });
+  formBahan.push({ nama: b.nama, nama_normal: b.nama_normal, harga: b.harga, sumber: b.sumber, sumber_acuan: b.sumber, harga_gudang: b.harga_gudang, harga_harian: b.harga_harian, sku_gudang: b.sku_gudang, tanggal: b.tanggal || null, konv: b.konv ? { ...b.konv } : null, qty: qty || 0, override: null, hargaBeliOverride: null });
   renderFormBahan(); recalc();
 }
 
@@ -2047,7 +2074,7 @@ function renderFormBahan(){
     const tglB = (b.override == null && b.hargaBeliOverride == null && b.tanggal) ? infoTanggal(b.tanggal) : null;
     const usangB = (tglB && tglB.lama) ? ` <span class="tanda-usang" title="Belanja terakhir ${tglB.hari} hari lalu (${esc(tglB.teks)}) — harga mungkin sudah berubah"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>` : "";
     return `<tr class="bahan-row" data-i="${i}">
-      <td><span class="pnm">${esc(b.nama)}</span> ${lencanaSumberBahan(b)}${janggal ? ' <span class="tanda-usang" title="Harga per unit janggal — cek isi per kemasan lewat tombol edit"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h16.9a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg></span>' : ''}${usangB}</td>
+      <td><span class="pnm">${esc(b.nama)}</span> ${lencanaSumberBahan(b)}${tandaBedaKemasan(b)}${janggal ? ' <span class="tanda-usang" title="Harga per unit janggal — cek isi per kemasan lewat tombol edit"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h16.9a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg></span>' : ''}${usangB}</td>
       <td class="r"><span class="num-val">${b.qty || 0} ${esc(unit)}</span></td>
       <td class="r"><span class="num-val">${price.toFixed(2)}</span></td>
       <td class="r"><span class="num-val hl">${rp(sub)}</span></td>
@@ -2416,6 +2443,9 @@ async function openEdit(id){
       // sebenarnya (gudang Cashflow vs belanja harian) diambil dari katalog
       // saat ini, supaya bisa ditandai di baris resep.
       sumber_acuan: found ? found.sumber : null,
+      harga_gudang: found ? found.harga_gudang : null,
+      harga_harian: found ? found.harga_harian : null,
+      sku_gudang: found ? found.sku_gudang : null,
       konv: found && found.konv ? { ...found.konv } : (konversiMap[r.bahan_nama_normal] || null),
       qty: Number(r.qty_pakai) || 0,
       override: r.harga_override !== null && r.harga_override !== undefined ? Number(r.harga_override) : null,
@@ -2734,6 +2764,7 @@ function bahanCatalog(){
     return {
       tipe: "acuan", nama: b.nama, nama_normal: b.nama_normal, sumber: b.sumber || "acuan",
       hargaBeli: harga, isi: konv ? konv.isi : null, unit: konv ? konv.unit : null,
+      harga_gudang: b.harga_gudang, harga_harian: b.harga_harian, sku_gudang: b.sku_gudang,
       perUnit: konv ? harga / (konv.isi || 1) : null, tanggal: b.tanggal || null,
     };
   });
@@ -2819,7 +2850,7 @@ function renderBahanView(){
       ? `<span class="sub-note" style="color:var(--amber);display:inline;">belum diatur</span>`
       : `<span class="num-val">${b.perUnit.toFixed(2)}</span><span class="sub-note" style="display:inline;"> /${esc(b.unit || "")}</span>`;
     return `<tr>
-      <td><span class="pnm">${esc(b.nama)}</span>${curiga ? ' <span class="tanda-usang" title="Harga per unit janggal — cek isi per kemasan"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h16.9a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg></span>' : ''}</td>
+      <td><span class="pnm">${esc(b.nama)}</span>${tandaBedaKemasan(b)}${curiga ? ' <span class="tanda-usang" title="Harga per unit janggal — cek isi per kemasan"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h16.9a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg></span>' : ''}</td>
       <td>${bahanSumberBadge(b)}</td>
       <td class="r"><span class="num-val">${b.hargaBeli != null ? rp(b.hargaBeli) : "—"}</span></td>
       <td class="r">${b.isi != null ? b.isi : "—"}</td>
@@ -3474,6 +3505,8 @@ async function bukaKondimen(id){
         nama: b.bahan_nama || (found ? found.nama : b.bahan_nama_normal),
         nama_normal: b.bahan_nama_normal, sumber: b.sumber_bahan,
         harga: found ? found.harga : 0,
+        harga_gudang: found ? found.harga_gudang : null,
+        harga_harian: found ? found.harga_harian : null,
         // Dibawa supaya baris bahan bisa menampilkan ikon jam "belanja terakhir
         // >30 hari", sama seperti form produk. Sebelumnya tidak ikut dipetakan.
         tanggal: (found && found.tanggal) || null,
@@ -3574,7 +3607,7 @@ function renderKondimenEditor(body){
         // dijual per kemasan besar (mis. beras 25kg) keitung harganya per gram
         // padahal itu masih harga per karung. renderKondimenBahan() di bawah
         // yang menampilkan peringatan "Lengkapi satuan" kalau konv null.
-        e.bahan.push({ nama: b.nama, nama_normal: b.nama_normal, harga: b.harga, sumber: b.sumber, tanggal: b.tanggal || null, konv: b.konv ? {...b.konv} : null, qty: 0, override: null });
+        e.bahan.push({ nama: b.nama, nama_normal: b.nama_normal, harga: b.harga, sumber: b.sumber, tanggal: b.tanggal || null, harga_gudang: b.harga_gudang, harga_harian: b.harga_harian, konv: b.konv ? {...b.konv} : null, qty: 0, override: null });
         renderKondimenBahan(); refreshKondimenHpp();
       }
       cari.value = ""; hasil.classList.add("hidden");
@@ -3642,7 +3675,7 @@ function renderKondimenBahan(){
     const usangK = (tglK && tglK.lama) ? ` <span class="tanda-usang" title="Belanja terakhir ${tglK.hari} hari lalu (${esc(tglK.teks)}) — harga mungkin sudah berubah"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>` : "";
     return `<div class="bahan-row" style="padding:10px 12px;" data-i="${i}">
       <div style="display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center;">
-        <span class="brow-nm">${esc(b.nama)}${usangK}</span>
+        <span class="brow-nm">${esc(b.nama)}${tandaBedaKemasan(b)}${usangK}</span>
         <span style="display:flex;align-items:center;gap:6px;"><input type="number" value="${b.qty}" data-kq="${i}" style="width:80px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;text-align:right;font-size:13px;"><span style="font-size:11px;color:var(--ink-faint);">${esc(unit)}</span></span>
         <span class="brow-sub">${rp(sub)}</span>
       </div>
