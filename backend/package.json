@@ -17,7 +17,8 @@
     "cek-data": "tsx scripts/cekData.ts",
     "cadangan": "tsx -e \"require('./src/lib/cadangan').buatCadangan('manual').then(h=>{console.log(h);process.exit(0)})\"",
     "pulihkan": "tsx scripts/pulihkanCadangan.ts",
-    "pindahkan-pengaturan": "tsx scripts/pindahkanPengaturanHpp.ts"
+    "pindahkan-pengaturan": "tsx scripts/pindahkanPengaturanHpp.ts",
+    "cek-harga-gudang": "tsx scripts/cekHargaGudang.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.20.0",
