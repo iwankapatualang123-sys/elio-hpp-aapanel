@@ -445,6 +445,14 @@
 
   /* tanda bahan usang */
   .tanda-usang{ color:var(--amber); display:inline-flex; align-items:center; }
+  /* Tanda peringatan yang bisa diklik untuk melihat penjelasannya */
+  .tanda-ingat{ border:0; background:transparent; padding:0 1px; line-height:0; display:inline-flex; align-items:center; vertical-align:-2px; cursor:pointer; }
+  .tanda-ingat.amber{ color:var(--amber); }
+  .tanda-ingat.merah{ color:var(--red); }
+  .tanda-ingat:hover{ opacity:.7; }
+  .td-pesan{ font-size:13.5px; line-height:1.6; color:var(--ink); margin:2px 0 14px; }
+  .td-saran{ background:var(--panel); border-radius:10px; padding:11px 13px; font-size:13px; line-height:1.55; color:var(--ink-soft); }
+  .td-saran b{ display:block; color:var(--ink); margin-bottom:3px; font-size:12px; }
 
   .status-belum{ background:var(--amber-light); color:var(--amber); display:inline-flex; align-items:center; gap:4px; }
   .prod-item.belum{ border-left:3px solid var(--amber); }

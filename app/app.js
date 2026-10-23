@@ -245,10 +245,51 @@ function lencanaSumberBahan(b){
   return "";
 }
 
+// Semua tanda peringatan di baris bahan dibuat bisa DIKLIK, bukan cuma
+// tooltip: di layar sentuh tooltip tidak pernah muncul, jadi tandanya selama
+// ini tidak bisa dimengerti siapa pun yang tidak bertanya.
+function tandaIngat(kelas, ikon, judul, pesan, saran){
+  const at = (t) => esc(String(t)).replace(/"/g, "&quot;");
+  return ` <button type="button" class="tanda-ingat ${kelas}" title="${at(judul + " — " + pesan)}" data-ingat-judul="${at(judul)}" data-ingat-pesan="${at(pesan)}" data-ingat-saran="${at(saran)}">${ikon}</button>`;
+}
+
+// Satu penangan untuk seluruh halaman -- tanda dirender ulang terus-menerus,
+// jadi memasang listener per tombol gampang terlewat.
+document.addEventListener("click", (e) => {
+  const t = e.target.closest ? e.target.closest("[data-ingat-judul]") : null;
+  if (!t) return;
+  e.stopPropagation(); e.preventDefault();
+  bukaPenjelasanTanda(t.dataset.ingatJudul, t.dataset.ingatPesan, t.dataset.ingatSaran);
+});
+
+function bukaPenjelasanTanda(judul, pesan, saran){
+  let modal = $("#tandaModal");
+  if (!modal){
+    modal = document.createElement("div");
+    modal.id = "tandaModal";
+    modal.className = "dash-modal hidden";
+    modal.innerHTML = `<div class="dm-backdrop"></div>
+      <div class="dm-panel" style="max-width:420px;">
+        <div class="dm-head"><h3 id="tdJudul"></h3><button class="icon-btn" id="tdClose" aria-label="Tutup"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>
+        <div class="dm-body"><p id="tdPesan" class="td-pesan"></p><div class="td-saran"><b>Yang bisa dilakukan</b><div id="tdSaran"></div></div></div>
+      </div>`;
+    document.body.appendChild(modal);
+    modal.querySelector(".dm-backdrop").addEventListener("click", () => modal.classList.add("hidden"));
+    modal.querySelector("#tdClose").addEventListener("click", () => modal.classList.add("hidden"));
+  }
+  $("#tdJudul").textContent = judul || "Peringatan";
+  $("#tdPesan").textContent = pesan || "";
+  $("#tdSaran").textContent = saran || "";
+  modal.classList.remove("hidden");
+  requestAnimationFrame(() => modal.classList.add("show"));
+}
+
 function tandaBedaKemasan(b){
   const x = bedaKemasan(b);
   if (!x) return "";
-  return ` <span class="tanda-usang" title="${esc(pesanBedaKemasan(x)).replace(/"/g, "&quot;")}">${IKON_BEDA_KEMASAN}</span>`;
+  return tandaIngat("amber", IKON_BEDA_KEMASAN, "Kemungkinan beda kemasan",
+    `Harga di gudang ${rp(x.gudang)}, sedangkan di belanja harian ${rp(x.harian)} — beda ${Math.round(x.rasio)} kali untuk bahan yang sama. Biasanya ini bukan harganya yang melonjak, tapi kemasannya yang berbeda: gudang membeli per karton, belanja harian per botol atau pcs.${x.sku ? " SKU gudang: " + x.sku + "." : ""}`,
+    "Buka tombol edit (pensil) di baris ini, lalu samakan isi per kemasan dengan kemasan yang harganya sedang dipakai. Kalau yang terpakai harga karton, isinya juga harus isi satu karton.");
 }
 
 // Nilai rupiah biaya operasional untuk SATU produk, diturunkan balik dari HPP
@@ -409,9 +450,8 @@ function bedaKemasan(b){
   if (rasio < 3) return null;
   return { gudang: g, harian: h, rasio, sku: b.sku_gudang || null };
 }
-function pesanBedaKemasan(x){
-  return `Harga gudang ${rp(x.gudang)} vs belanja harian ${rp(x.harian)} — beda ${Math.round(x.rasio)}x, kemungkinan beda kemasan (mis. karton vs botol). Cek isi per kemasan lewat tombol edit.`;
-}
+const IKON_SEGITIGA = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h16.9a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>';
+const IKON_JAM = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
 const IKON_BEDA_KEMASAN = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><path d="M3.3 7L12 12l8.7-5M12 22V12"/></svg>';
 async function loadKonversi(){
   const { data } = await sb.from("material_konversi").select("*");
@@ -1002,10 +1042,12 @@ function prodRowHtml(p, showKat){
   let tren = "";
   if (!belum && p._tren === "naik") tren = `<span class="tren tren-naik" title="HPP naik ${Math.abs(p._trenPersen)}% dari sebelumnya">▲ ${Math.abs(p._trenPersen)}%</span>`;
   else if (!belum && p._tren === "turun") tren = `<span class="tren tren-turun" title="HPP turun ${Math.abs(p._trenPersen)}% dari sebelumnya">▼ ${Math.abs(p._trenPersen)}%</span>`;
-  const usangTitle = p._bahanUsang ? esc(p._bahanUsang.join(", ")).replace(/"/g, "&quot;") : "";
-  const usang = (!belum && p._bahanUsang) ? `<span class="tanda-usang" title="Belanja terakhir bahan ini sudah lewat 30 hari, harga mungkin sudah berubah — ${usangTitle}"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>` : "";
-  const takHitungTitle = p._takTerhitung ? esc(p._takTerhitung.join(", ")).replace(/"/g, "&quot;") : "";
-  const takHitung = p._takTerhitung ? `<span class="tanda-usang" style="color:var(--red);" title="HPP tidak ikut diperbarui otomatis — ${takHitungTitle}"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h16.9a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg></span>` : "";
+  const usang = (!belum && p._bahanUsang) ? tandaIngat("amber", IKON_JAM, "Ada bahan yang harganya lama",
+    `Bahan berikut belanja terakhirnya sudah lewat 30 hari: ${p._bahanUsang.join(", ")}. HPP produk ini masih memakai harga saat itu.`,
+    "Catat belanja terbarunya di Cashflow — HPP ikut menyesuaikan sendiri pada hitung ulang berikutnya.") : "";
+  const takHitung = p._takTerhitung ? tandaIngat("merah", IKON_SEGITIGA, "HPP produk ini tidak diperbarui",
+    `Hitung ulang otomatis melewati produk ini karena ada bahan bermasalah: ${p._takTerhitung.join(", ")}. Angka HPP yang tampil adalah angka lama.`,
+    "Buka produk ini, lalu bereskan bahan yang ditandai di resepnya. Setelah beres, produk ikut terhitung lagi pada hitung ulang berikutnya.") : "";
   const statusHtml = belum
     ? `<span class="status-pill status-belum"><svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h16.9a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>Belum diisi</span>`
     : (st ? `<span class="status-pill ${st.cls}">${st.txt}</span>` : "");
@@ -2072,9 +2114,11 @@ function renderFormBahan(){
     // membuka popup tiap bahan satu per satu. Kalau harga beli / harga per
     // satuan sudah dikunci manual, umur harga acuan tidak relevan lagi.
     const tglB = (b.override == null && b.hargaBeliOverride == null && b.tanggal) ? infoTanggal(b.tanggal) : null;
-    const usangB = (tglB && tglB.lama) ? ` <span class="tanda-usang" title="Belanja terakhir ${tglB.hari} hari lalu (${esc(tglB.teks)}) — harga mungkin sudah berubah"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>` : "";
+    const usangB = (tglB && tglB.lama) ? tandaIngat("amber", IKON_JAM, "Harga sudah lama",
+    `Belanja terakhir bahan ini ${tglB.hari} hari lalu (${tglB.teks}). Harga yang dipakai HPP masih harga saat itu.`,
+    "Kalau harganya sudah berubah, cukup catat belanja terbarunya di Cashflow — HPP ikut menyesuaikan sendiri. Kalau bahan ini memang jarang dibeli, abaikan saja.") : "";
     return `<tr class="bahan-row" data-i="${i}">
-      <td><span class="pnm">${esc(b.nama)}</span> ${lencanaSumberBahan(b)}${tandaBedaKemasan(b)}${janggal ? ' <span class="tanda-usang" title="Harga per unit janggal — cek isi per kemasan lewat tombol edit"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h16.9a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg></span>' : ''}${usangB}</td>
+      <td><span class="pnm">${esc(b.nama)}</span> ${lencanaSumberBahan(b)}${tandaBedaKemasan(b)}${janggal ? tandaIngat("amber", IKON_SEGITIGA, "Satuan mungkin salah", `Harga bahan ini terbaca ${rp(price)} per ${unit} — terlalu tinggi untuk satu ${unit}. Hampir selalu karena isi per kemasan belum benar: harga satu kemasan dibagi jumlah isi yang keliru.`, "Buka tombol edit (pensil) di baris ini, lalu betulkan isi per kemasan & satuannya. Contoh: beras sekarung Rp 150.000 isinya 25.000 gram, bukan 25.") : ""}${usangB}</td>
       <td class="r"><span class="num-val">${b.qty || 0} ${esc(unit)}</span></td>
       <td class="r"><span class="num-val">${price.toFixed(2)}</span></td>
       <td class="r"><span class="num-val hl">${rp(sub)}</span></td>
@@ -2843,14 +2887,14 @@ function renderBahanView(){
     const tglTxt = !t
       ? `<span class="sub-note" style="display:inline;">—</span>`
       : t.lama
-        ? `<span class="tanda-usang" title="Belanja terakhir ${t.hari} hari lalu — harga mungkin sudah berubah"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span> <span class="si-usang">${esc(t.teks)}</span>`
+        ? `${tandaIngat("amber", IKON_JAM, "Harga sudah lama", `Belanja terakhir ${t.hari} hari lalu (${t.teks}). Harga yang dipakai HPP masih harga saat itu.`, "Kalau harganya sudah berubah, catat belanja terbarunya di Cashflow — HPP ikut menyesuaikan sendiri.")} <span class="si-usang">${esc(t.teks)}</span>`
         : `<span class="sub-note" style="display:inline;">${esc(t.teks)}</span>`;
     const key = b.tipe === "manual" ? b.id : b.nama_normal;
     const perUnitTxt = b.perUnit == null
       ? `<span class="sub-note" style="color:var(--amber);display:inline;">belum diatur</span>`
       : `<span class="num-val">${b.perUnit.toFixed(2)}</span><span class="sub-note" style="display:inline;"> /${esc(b.unit || "")}</span>`;
     return `<tr>
-      <td><span class="pnm">${esc(b.nama)}</span>${tandaBedaKemasan(b)}${curiga ? ' <span class="tanda-usang" title="Harga per unit janggal — cek isi per kemasan"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h16.9a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg></span>' : ''}</td>
+      <td><span class="pnm">${esc(b.nama)}</span>${tandaBedaKemasan(b)}${curiga ? tandaIngat("amber", IKON_SEGITIGA, "Satuan mungkin salah", `Harga per unit bahan ini terbaca ${b.perUnit == null ? "-" : b.perUnit.toFixed(2)} per ${b.unit || "unit"} — terlalu tinggi. Hampir selalu karena isi per kemasan belum benar.`, "Klik tombol edit (pensil) di baris ini, lalu betulkan isi per kemasan & satuannya.") : ''}</td>
       <td>${bahanSumberBadge(b)}</td>
       <td class="r"><span class="num-val">${b.hargaBeli != null ? rp(b.hargaBeli) : "—"}</span></td>
       <td class="r">${b.isi != null ? b.isi : "—"}</td>
@@ -3672,7 +3716,9 @@ function renderKondimenBahan(){
     // kondimen yang HPP-nya janggal, bahan yang harganya sudah lama langsung
     // kelihatan tanpa perlu membuka satu per satu.
     const tglK = (b.override == null && b.tanggal) ? infoTanggal(b.tanggal) : null;
-    const usangK = (tglK && tglK.lama) ? ` <span class="tanda-usang" title="Belanja terakhir ${tglK.hari} hari lalu (${esc(tglK.teks)}) — harga mungkin sudah berubah"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>` : "";
+    const usangK = (tglK && tglK.lama) ? tandaIngat("amber", IKON_JAM, "Harga sudah lama",
+    `Belanja terakhir bahan ini ${tglK.hari} hari lalu (${tglK.teks}). Harga yang dipakai HPP masih harga saat itu.`,
+    "Kalau harganya sudah berubah, catat belanja terbarunya di Cashflow — HPP ikut menyesuaikan sendiri.") : "";
     return `<div class="bahan-row" style="padding:10px 12px;" data-i="${i}">
       <div style="display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center;">
         <span class="brow-nm">${esc(b.nama)}${tandaBedaKemasan(b)}${usangK}</span>
