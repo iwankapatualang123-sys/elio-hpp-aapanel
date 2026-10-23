@@ -1650,6 +1650,7 @@ const PROSES_LEVEL = {
 
 function newForm(){
   formBahan = []; formOpex = []; formOverheadPersen = 15; formMargin = 60; formHargaAktual = null; editingProdukId = null; formKategoriId = ""; formProses = []; formFotoPlating = null;
+  formSiap = false; formKotor = false;
   const d = bacaDraft();
   if (d && !editingProdukId){
     // ada draft tersimpan — tawarkan pulihkan
@@ -1783,6 +1784,8 @@ function renderAddView(){
   if (hapusBtn) hapusBtn.addEventListener("click", deleteProduk);
 
   renderFormBahan(); renderProses(); renderFotoPlating(); recalc();
+  // Form baru selesai dibangun: apa pun yang terjadi di atas bukan perubahan user.
+  formSiap = true; formKotor = false;
   renderKatTingkat();
 }
 
@@ -1905,6 +1908,37 @@ function kumpulkanForm(){
     ts: Date.now(),
   };
 }
+// Penjaga "perubahan belum disimpan" di form produk.
+//
+// Kenapa ada: resep hanya tersimpan saat tombol Simpan pada PRODUK ditekan.
+// Berpindah halaman sebelum itu membuang semua editan tanpa sepatah kata pun —
+// terbukti memakan korban: qty Pasta di Carbonara diubah ke 90 gr, lalu hilang,
+// dan baru ketahuan setelah ditelusuri ke log (produk_log tidak punya entri
+// "edit" sama sekali). Penyimpanan draf otomatis TIDAK menolong di sini karena
+// sengaja dimatikan untuk produk yang sedang diedit (lihat autoDraft).
+//
+// formSiap menahan penandaan selama form masih dirender pertama kali —
+// renderAddView/openEdit memanggil recalc() beberapa kali sebelum user
+// menyentuh apa pun, dan itu bukan perubahan.
+let formKotor = false;
+let formSiap = false;
+function tandaiFormKotor(){ if (formSiap) formKotor = true; }
+function lupakanPerubahanForm(){ formKotor = false; }
+
+// Ketikan & pilihan di dalam form dianggap perubahan. Didelegasikan ke document
+// supaya tetap jalan walau isi form dirender ulang terus-menerus.
+["input", "change"].forEach(ev => document.addEventListener(ev, (e) => {
+  if (e.target && e.target.closest && e.target.closest("#viewAdd")) tandaiFormKotor();
+}, true));
+
+// Tutup/muat-ulang tab juga dijaga. Browser menampilkan dialog bawaannya
+// sendiri; teksnya tidak bisa diatur, jadi cukup diaktifkan saja.
+window.addEventListener("beforeunload", (e) => {
+  if (!formKotor) return;
+  e.preventDefault();
+  e.returnValue = "";
+});
+
 function simpanDraft(){ try{ localStorage.setItem(DRAFT_KEY, JSON.stringify(kumpulkanForm())); }catch(e){} }
 let draftTimer = null;
 function autoDraft(){ if (editingProdukId) return; clearTimeout(draftTimer); draftTimer = setTimeout(simpanDraft, 800); }
@@ -2356,6 +2390,7 @@ function renderPengaturanInfo(){
 }
 
 function recalc(){
+  tandaiFormKotor();
   const material = calcMaterial();
   const atur = pengaturanFormAktif();
   // Disimpan ke variabel form supaya tersimpan ke kolom produk saat Simpan —
@@ -2450,6 +2485,7 @@ async function saveProduk(){
   });
 
   hapusDraft();
+  lupakanPerubahanForm();
   toast(isEdit ? "Perubahan disimpan" : "Produk disimpan");
   await loadProduk();
   switchTab("list");
@@ -2507,6 +2543,7 @@ async function openEdit(id){
   if ($("#f-cabang") && p.cabang_hpp_id) $("#f-cabang").value = p.cabang_hpp_id;
   renderKatTingkat();
   recalc();
+  lupakanPerubahanForm(); // mengisi form dari data tersimpan bukan perubahan
 }
 
 async function deleteProduk(){
@@ -2517,6 +2554,7 @@ async function deleteProduk(){
   if (error){ toast("Gagal menghapus"); return; }
   await catatLog(editingProdukId, p ? p.nama : "", "hapus", "");
   toast("Produk dihapus");
+  lupakanPerubahanForm();
   await loadProduk();
   switchTab("list");
 }
@@ -2774,6 +2812,11 @@ function tutupDashDetail(){
 }
 
 function switchTab(tab){
+  // Satu-satunya pintu keluar dari form produk, jadi penjaganya cukup di sini.
+  if (currentTab === "add" && tab !== "add" && formKotor){
+    if (!confirm("Perubahan pada produk ini BELUM disimpan.\n\nKalau pindah halaman sekarang, perubahannya hilang. Tetap pindah?")) return;
+    formKotor = false;
+  }
   currentTab = tab;
   $("#viewDash") && $("#viewDash").classList.toggle("hidden", tab !== "dash");
   $("#viewList").classList.toggle("hidden", tab !== "list");
