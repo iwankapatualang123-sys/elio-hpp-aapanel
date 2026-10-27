@@ -973,12 +973,15 @@ function produkMetrik(p){
   const belum = produkBelumDiisi(p);
   const rekom = Number(p.harga_jual_disarankan) || 0;
   const hpp = Number(p.hpp_terakhir) || 0;
-  const hargaEfektif = (p.harga_jual_aktual !== null && p.harga_jual_aktual !== undefined) ? Number(p.harga_jual_aktual) : rekom;
-  const selisih = Math.round(hargaEfektif - rekom);
-  const marginAktual = hargaEfektif > 0 ? (hargaEfektif - hpp) / hargaEfektif * 100 : null;
-  // Lihat catatan di prodRowHtml: kini porsi HPP di dalam harga jual.
-  const markup = hargaEfektif > 0 && hpp > 0 ? hpp / hargaEfektif * 100 : null;
-  return { belum, rekom, hpp, hargaEfektif, selisih, marginAktual, markup };
+  // Lihat catatan di prodRowHtml: harga jual yang belum diisi TIDAK dianggap
+  // sama dengan harga rekomendasi, supaya pengurutan "margin aktual" tidak
+  // mencampur produk yang benar-benar diukur dengan yang belum.
+  const adaHargaJual = p.harga_jual_aktual !== null && p.harga_jual_aktual !== undefined && Number(p.harga_jual_aktual) > 0;
+  const hargaEfektif = adaHargaJual ? Number(p.harga_jual_aktual) : rekom;
+  const selisih = adaHargaJual ? Math.round(hargaEfektif - rekom) : null;
+  const marginAktual = (adaHargaJual && hargaEfektif > 0) ? (hargaEfektif - hpp) / hargaEfektif * 100 : null;
+  const markup = (adaHargaJual && hargaEfektif > 0 && hpp > 0) ? hpp / hargaEfektif * 100 : null;
+  return { belum, rekom, hpp, hargaEfektif, adaHargaJual, selisih, marginAktual, markup };
 }
 function urutkanProduk(arr){
   const a = arr.slice();
@@ -1052,19 +1055,25 @@ function prodRowHtml(p, showKat){
     ? `<span class="status-pill status-belum"><svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10.3 3.9L1.8 18a2 2 0 001.7 3h16.9a2 2 0 001.7-3L13.7 3.9a2 2 0 00-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg>Belum diisi</span>`
     : (st ? `<span class="status-pill ${st.cls}">${st.txt}</span>` : "");
   const rekom = Number(p.harga_jual_disarankan) || 0;
-  const hargaEfektif = (p.harga_jual_aktual !== null && p.harga_jual_aktual !== undefined) ? Number(p.harga_jual_aktual) : rekom;
+  // Harga jual yang BENAR-BENAR dipakai di outlet. Kalau belum diisi, jangan
+  // diam-diam memakai harga rekomendasi: kolom Harga jual, Selisih, Margin
+  // aktual & % HPP jadi memantulkan rekomendasi itu sendiri (selisih selalu
+  // Rp 0, margin aktual selalu sama dengan margin rekom) dan terbaca seolah
+  // itu kenyataan di outlet. Lebih jujur dikosongkan.
+  const adaHargaJual = p.harga_jual_aktual !== null && p.harga_jual_aktual !== undefined && Number(p.harga_jual_aktual) > 0;
+  const hargaEfektif = adaHargaJual ? Number(p.harga_jual_aktual) : rekom;
   const selisihNom = Math.round(hargaEfektif - rekom);
   const persenRekom = rekom > 0 ? Math.round((hargaEfektif / rekom) * 100) : null;
-  const selisihHtml = belum ? "—" : (selisihNom === 0
+  const selisihHtml = (belum || !adaHargaJual) ? "—" : (selisihNom === 0
     ? `<span class="num-val">Rp 0</span><div class="sub-note">100% dr rekom</div>`
     : `<span class="num-val">${selisihNom > 0 ? "+" : "-"}${rp(Math.abs(selisihNom))}</span><div class="sub-note">${persenRekom != null ? persenRekom + "% dr rekom" : ""}</div>`);
   const hppNum = Number(p.hpp_terakhir) || 0;
   const marginRekom = rekom > 0 ? Math.round((rekom - hppNum) / rekom * 100) : null;
-  const marginAktual = hargaEfektif > 0 ? Math.round((hargaEfektif - hppNum) / hargaEfektif * 100) : null;
+  const marginAktual = (adaHargaJual && hargaEfektif > 0) ? Math.round((hargaEfektif - hppNum) / hargaEfektif * 100) : null;
   // Dulu markup basis modal ((jual-HPP)/HPP). Diganti atas permintaan user jadi
   // porsi HPP di dalam harga jual — cara baca yang lazim di F&B (food cost %).
   // Catatan: angka ini selalu 100% dikurangi margin aktual.
-  const hppPersen = hargaEfektif > 0 && hppNum > 0 ? Math.round(hppNum / hargaEfektif * 100) : null;
+  const hppPersen = (adaHargaJual && hargaEfektif > 0 && hppNum > 0) ? Math.round(hppNum / hargaEfektif * 100) : null;
   const updateTgl = infoTanggal(p.updated_at).teks;
   // Kebijakan yang berlaku untuk produk ini (dari pengaturan cabang/kategori).
   const aturProduk = cariPengaturan(p.cabang_hpp_id || null, p.kategori_id || null);
@@ -1079,7 +1088,7 @@ function prodRowHtml(p, showKat){
     </td>
     <td class="r"><span class="num-val">${belum ? "—" : rp(p.hpp_terakhir)}</span>${tren}</td>
     <td class="r"><span class="num-val">${belum ? "—" : rp(rekom)}</span></td>
-    <td class="r"><span class="num-val hl">${belum ? "—" : rp(hargaEfektif)}</span></td>
+    <td class="r">${belum || !adaHargaJual ? `<span class="atur-sel">belum diisi</span>` : `<span class="num-val hl">${rp(hargaEfektif)}</span>`}</td>
     <td class="r">${selisihHtml}</td>
     <td class="r"><span class="num-val">${marginRekom == null ? "—" : marginRekom + "%"}</span></td>
     <td class="r" title="${esc(ringkasBiaya(aturProduk.biaya))}"><span class="num-val">${biayaOps == null ? "—" : rp(biayaOps)}</span></td>
