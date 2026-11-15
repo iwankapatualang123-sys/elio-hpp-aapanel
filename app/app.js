@@ -3211,6 +3211,7 @@ async function renderKelolaCadangan(){
       <div class="cad-aksi">
         <button class="btn btn-primary" id="cadUnduhTerbaru" ${daftar.length ? "" : "disabled"}>Unduh cadangan terbaru</button>
         <button class="btn" id="cadBuat">Buat cadangan sekarang</button>
+        <button class="btn" id="cadPulihFile">Pulihkan dari file…</button>
       </div>
       <div class="cad-list">
         ${daftar.length ? daftar.map(c => `
@@ -3219,9 +3220,23 @@ async function renderKelolaCadangan(){
               <div class="cad-nama">${esc(waktuCadangan(c.waktu))}${c.mundur ? ' <span class="cad-tag">saat data mundur</span>' : ""}</div>
               <div class="cad-meta">${esc(c.nama)} · ${kb(c.ukuran)}</div>
             </div>
-            <button class="btn btn-sm" data-unduh="${esc(c.nama)}">Unduh</button>
+            <div class="cad-btns">
+              <button class="btn btn-sm" data-unduh="${esc(c.nama)}">Unduh</button>
+              <button class="btn btn-sm btn-danger" data-pulih="${esc(c.nama)}" data-waktu="${esc(c.waktu)}">Pulihkan</button>
+            </div>
           </div>`).join("") : '<div class="empty" style="padding:16px;">Belum ada cadangan.</div>'}
       </div>
+    </div>
+
+    <div class="card">
+      <h2>Cadangan SQL (mysqldump)</h2>
+      <p class="cad-intro">Format <code>.sql.gz</code> standar untuk pemulihan penuh (<code>mysql &lt; file</code>) atau pindah server. Dibuat saat diminta — cadangan JSON harian tetap jalan otomatis. Rotasi simpan 10 terbaru.</p>
+      <div class="cad-aksi">
+        <button class="btn btn-primary" id="sqlBuat">Buat &amp; unduh SQL sekarang</button>
+        <button class="btn" id="sqlPulihFile">Pulihkan dari file…</button>
+      </div>
+      <div id="sqlStatus" class="backup-status"></div>
+      <div class="cad-list" id="sqlList"><div class="empty" style="padding:16px;">Memuat…</div></div>
     </div>`;
 
   const bt = $("#cadUnduhTerbaru");
@@ -3247,6 +3262,121 @@ async function renderKelolaCadangan(){
     } catch (e) { toast("Gagal"); }
     renderKelolaCadangan(); cekStatusCadangan();
   });
+
+  // --- Pemulihan (restore) ---
+  // Pulihkan dari baris cadangan JSON di server
+  $all("[data-pulih]", body).forEach(b => b.addEventListener("click", () => {
+    if (!konfirmasiPulih(b.dataset.pulih + " (" + waktuCadangan(b.dataset.waktu) + ")")) return;
+    jalankanPulih(apiCadangan("/pulihkan/" + encodeURIComponent(b.dataset.pulih), { method: "POST" }));
+  }));
+  // Pulihkan JSON dari berkas di komputer (kasus server kehilangan backup)
+  const cpf = $("#cadPulihFile");
+  if (cpf) cpf.addEventListener("click", () => pilihFileCadangan("application/gzip,.gz", async (f) => {
+    if (!konfirmasiPulih("berkas: " + f.name)) return;
+    try {
+      const b64 = await fileKeBase64(f);
+      jalankanPulih(apiCadangan("/pulihkan-unggah", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ b64 }) }));
+    } catch (e) { toast("Gagal membaca file: " + e.message); }
+  }));
+  // SQL: buat & unduh sekarang
+  const sqlBuat = $("#sqlBuat");
+  if (sqlBuat) sqlBuat.addEventListener("click", async () => {
+    sqlBuat.disabled = true; const label = sqlBuat.textContent; sqlBuat.textContent = "Membuat SQL… (beberapa detik)";
+    await unduhBlobAuth("/api/backup-sql/buat", "hpp-backup.sql.gz");
+    sqlBuat.disabled = false; sqlBuat.textContent = label;
+    muatDaftarSql();
+  });
+  // SQL: pulihkan dari berkas di komputer
+  const sqlPf = $("#sqlPulihFile");
+  if (sqlPf) sqlPf.addEventListener("click", () => pilihFileCadangan("application/gzip,.gz", async (f) => {
+    if (!konfirmasiPulih("berkas SQL: " + f.name)) return;
+    try {
+      const b64 = await fileKeBase64(f);
+      jalankanPulih(apiBackupSql("/pulihkan-unggah", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ b64 }) }));
+    } catch (e) { toast("Gagal membaca file: " + e.message); }
+  }));
+  muatDaftarSql();
+}
+
+// ---- Helper backup/restore SQL + pemulihan (dipakai renderKelolaCadangan) ----
+async function apiBackupSql(p, opts){
+  let token = ""; try { token = localStorage.getItem("hpp_token") || ""; } catch (e) {}
+  const base = (typeof API_BASE_URL !== "undefined" && API_BASE_URL) || "";
+  const o = Object.assign({ cache: "no-store" }, opts || {});
+  o.headers = Object.assign({ Authorization: "Bearer " + token }, (opts && opts.headers) || {});
+  return fetch(base + "/api/backup-sql" + p, o);
+}
+// Konfirmasi dua langkah untuk aksi yang MENIMPA data.
+function konfirmasiPulih(deskripsi){
+  if (!confirm("PULIHKAN akan MENIMPA SELURUH data sekarang dengan:\n\n" + deskripsi + "\n\nData yang dibuat SETELAH cadangan ini akan HILANG. Sistem otomatis membuat cadangan \"sebelum-pulih\" dulu, jadi pemulihan yang salah masih bisa dibatalkan.\n\nLanjutkan?")) return false;
+  const k = prompt("Ketik PULIHKAN (huruf besar) untuk konfirmasi:");
+  if (k !== "PULIHKAN"){ toast("Dibatalkan"); return false; }
+  return true;
+}
+async function jalankanPulih(fetchPromise){
+  toast("Memulihkan… jangan tutup halaman");
+  try {
+    const r = await fetchPromise;
+    const h = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(h.error || ("status " + r.status));
+    alert("Pemulihan selesai.\n\nCadangan pengaman (untuk membatalkan kalau perlu): " + (h.sebelumPulih || "-") + "\n\nHalaman akan dimuat ulang.");
+    location.reload();
+  } catch (e) { toast("Gagal memulihkan: " + e.message); }
+}
+function fileKeBase64(file){
+  return new Promise((resolve, reject) => {
+    const rd = new FileReader();
+    rd.onload = () => { const s = String(rd.result); const i = s.indexOf(","); resolve(i >= 0 ? s.slice(i + 1) : s); };
+    rd.onerror = () => reject(new Error("tidak terbaca"));
+    rd.readAsDataURL(file);
+  });
+}
+function pilihFileCadangan(accept, cb){
+  const inp = document.createElement("input");
+  inp.type = "file"; if (accept) inp.accept = accept;
+  inp.onchange = () => { const f = inp.files && inp.files[0]; if (f) cb(f); };
+  inp.click();
+}
+async function unduhBlobAuth(apiPath, namaFallback){
+  let token = ""; try { token = localStorage.getItem("hpp_token") || ""; } catch (e) {}
+  const base = (typeof API_BASE_URL !== "undefined" && API_BASE_URL) || "";
+  try {
+    const r = await fetch(base + apiPath, { headers: { Authorization: "Bearer " + token }, cache: "no-store" });
+    if (!r.ok){ let m = "status " + r.status; try { m = (await r.json()).error || m; } catch (e) {} throw new Error(m); }
+    let nama = namaFallback;
+    const cd = r.headers.get("Content-Disposition");
+    if (cd){ const mm = cd.match(/filename\*?=(?:UTF-8''|")?([^";]+)/i); if (mm) nama = decodeURIComponent(mm[1].replace(/"$/, "")); }
+    const url = URL.createObjectURL(await r.blob());
+    const a = document.createElement("a"); a.href = url; a.download = nama; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    toast("Diunduh — simpan di tempat aman");
+  } catch (e) { toast("Gagal: " + e.message); }
+}
+async function muatDaftarSql(){
+  const el = $("#sqlList"); if (!el) return;
+  const kb = n => n < 1024 ? n + " B" : (n / 1024).toFixed(1).replace(".", ",") + " KB";
+  try {
+    const r = await apiBackupSql("");
+    if (!r.ok) throw new Error();
+    const daftar = await r.json();
+    if (!daftar.length){ el.innerHTML = '<div class="empty" style="padding:16px;">Belum ada cadangan SQL.</div>'; return; }
+    el.innerHTML = daftar.map(c => `
+      <div class="cad-row">
+        <div class="cad-info">
+          <div class="cad-nama">${esc(waktuCadangan(c.waktu))}</div>
+          <div class="cad-meta">${esc(c.nama)} · ${kb(c.ukuran)}</div>
+        </div>
+        <div class="cad-btns">
+          <button class="btn btn-sm" data-sqlunduh="${esc(c.nama)}">Unduh</button>
+          <button class="btn btn-sm btn-danger" data-sqlpulih="${esc(c.nama)}" data-waktu="${esc(c.waktu)}">Pulihkan</button>
+        </div>
+      </div>`).join("");
+    $all("[data-sqlunduh]", el).forEach(b => b.addEventListener("click", () => unduhBlobAuth("/api/backup-sql/unduh/" + encodeURIComponent(b.dataset.sqlunduh), b.dataset.sqlunduh)));
+    $all("[data-sqlpulih]", el).forEach(b => b.addEventListener("click", () => {
+      if (!konfirmasiPulih(b.dataset.sqlpulih + " (" + waktuCadangan(b.dataset.waktu) + ")")) return;
+      jalankanPulih(apiBackupSql("/pulihkan/" + encodeURIComponent(b.dataset.sqlpulih), { method: "POST" }));
+    }));
+  } catch (e) { el.innerHTML = '<div class="empty" style="padding:16px;">Gagal memuat daftar SQL (server mungkin belum diperbarui).</div>'; }
 }
 
 // ---------------------------------------------------------------------

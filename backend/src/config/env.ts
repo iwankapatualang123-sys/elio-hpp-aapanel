@@ -26,5 +26,11 @@ export const env = {
   // Token untuk endpoint widget ringkasan read-only (dipakai iframe di aplikasi
   // lain). BUKAN login — cuma kunci sederhana supaya URL widget tidak bisa
   // dibuka sembarang orang. Kosong = endpoint widget dimatikan (403).
-  widgetToken: process.env.WIDGET_TOKEN || ''
+  widgetToken: process.env.WIDGET_TOKEN || '',
+
+  // Path biner mysqldump / mysql untuk fitur backup & restore format SQL.
+  // Kosong = cari otomatis (aaPanel /www/server/mysql/bin -> PATH). Isi path
+  // lengkap kalau binernya tidak ketemu di lokasi standar.
+  mysqldumpPath: process.env.MYSQLDUMP_PATH || '',
+  mysqlPath: process.env.MYSQL_PATH || ''
 };

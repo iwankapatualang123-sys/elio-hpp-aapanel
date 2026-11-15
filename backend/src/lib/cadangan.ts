@@ -190,3 +190,60 @@ export async function statusCadangan() {
     jumlahCadangan: daftar.length
   };
 }
+
+// ---- PEMULIHAN (restore) dari berkas cadangan JSON ------------------------
+// Logika sama persis dengan skrip CLI scripts/pulihkanCadangan.ts (teruji),
+// dibungkus jadi fungsi supaya bisa dipanggil dari aplikasi. MENIMPA seluruh
+// data sekarang dengan isi berkas -> dipakai lewat endpoint ber-auth + konfirmasi
+// ketat di frontend. SELALU membuat cadangan 'sebelum-pulih' dulu (bisa dibatalkan).
+
+export function parseIsiCadangan(gzBuf: Buffer): any {
+  let isi: any;
+  try { isi = JSON.parse(zlib.gunzipSync(gzBuf).toString('utf8')); }
+  catch { throw new Error('Berkas tidak bisa dibaca (bukan .json.gz yang sah).'); }
+  if (!isi || isi.aplikasi !== 'elio-hpp' || !isi.data) throw new Error('Ini bukan berkas cadangan HPP Elio.');
+  return isi;
+}
+
+export function bacaIsiCadangan(nama: string): any {
+  const p = pathCadangan(nama);
+  if (!p) throw new Error('Cadangan tidak ditemukan atau nama tidak sah.');
+  return parseIsiCadangan(fs.readFileSync(p));
+}
+
+export async function pulihkanDariIsi(isi: any): Promise<{ sebelumPulih: string; ringkas: { tabel: string; dari: number | null; jadi: number; dilewati: boolean }[] }> {
+  if (!isi || isi.aplikasi !== 'elio-hpp' || !isi.data) throw new Error('Bukan berkas cadangan HPP Elio yang sah.');
+  // Tabel yang tidak ikut tercadang (gagal saat dibuat / versi lama) DILEWATI
+  // total: tidak dikosongkan, tidak diisi -- lihat alasannya di pulihkanCadangan.ts.
+  const ikut = (t: string) => Array.isArray(isi.data[t]) && !(isi.gagal && isi.gagal[t]);
+
+  // Pengaman WAJIB: cadangan keadaan sekarang dulu, supaya pemulihan yang salah
+  // pun masih bisa dibatalkan dengan memulihkan berkas ini.
+  const aman = await buatCadangan('sebelum-pulih');
+
+  const sebelum: Record<string, number | null> = {};
+  for (const t of TABEL) { try { sebelum[t] = await (prisma as any)[t].count(); } catch { sebelum[t] = null; } }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.$executeRawUnsafe('SET FOREIGN_KEY_CHECKS=0');
+    for (const t of [...TABEL].reverse()) if (ikut(t)) await (tx as any)[t].deleteMany({});
+    for (const t of TABEL) {
+      if (!ikut(t)) continue;
+      const rows = isi.data[t];
+      if (rows.length) await (tx as any)[t].createMany({ data: rows });
+    }
+    await tx.$executeRawUnsafe('SET FOREIGN_KEY_CHECKS=1');
+  }, { timeout: 300000, maxWait: 20000 });
+
+  // Pemulihan disengaja -> jadikan keadaan hasil pulih sebagai pembanding baru
+  // supaya alarm "database mundur" tidak menyala karenanya.
+  await terimaKeadaanSekarang();
+
+  const ringkas = TABEL.map((t) => ({
+    tabel: namaTabel(t),
+    dari: sebelum[t],
+    jadi: ikut(t) ? isi.data[t].length : (sebelum[t] ?? 0),
+    dilewati: !ikut(t)
+  }));
+  return { sebelumPulih: aman.nama, ringkas };
+}
